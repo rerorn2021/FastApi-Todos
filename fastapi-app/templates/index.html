@@ -5,28 +5,271 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>To-Do List</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-        form { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-        input[type="text"] { flex: 1 1 12rem; padding: .5rem; }
-        ul { list-style: none; padding: 0; }
-        li { display: flex; align-items: center; gap: .5rem; padding: .4rem 0; border-bottom: 1px solid #e5e5e5; }
-        li span { flex: 1; }
-        .done { text-decoration: line-through; color: #888; }
-        #error { color: #b00020; }
+        :root {
+            --bg-from: #ecebff;
+            --bg-to: #f1edff;
+            --card-bg: #ffffff;
+            --text: #1c1836;
+            --text-muted: #8a86a8;
+            --border: #e8e6f9;
+            --accent: #3e20e0;
+            --accent-hover: #2f16bd;
+            --accent-soft: #ece7fd;
+            --danger: #e5484d;
+            --danger-soft: #fdeceb;
+            --warning: #b45a00;
+            --warning-soft: #fdf1de;
+            --shadow: 0 20px 40px -20px rgba(62, 32, 224, .3);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-from: #120f24;
+                --bg-to: #191033;
+                --card-bg: #1e1a38;
+                --text: #f1eefc;
+                --text-muted: #8f8aac;
+                --border: #322b52;
+                --accent: #8272ff;
+                --accent-hover: #9989ff;
+                --accent-soft: #2a2150;
+                --danger: #ff6b70;
+                --danger-soft: #3a2130;
+                --warning: #f5b25c;
+                --warning-soft: #3a2c14;
+                --shadow: 0 20px 40px -20px rgba(0, 0, 0, .6);
+            }
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: "Pretendard", "Apple SD Gothic Neo", system-ui, -apple-system, "Segoe UI", sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            padding: 3rem 1rem;
+            color: var(--text);
+            background: radial-gradient(circle at 20% 0%, var(--bg-from), var(--bg-to) 65%);
+            display: flex;
+            justify-content: center;
+        }
+
+        .app {
+            width: 100%;
+            max-width: 30rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+
+        h1 {
+            margin: 0 0 .35rem;
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -.02em;
+        }
+
+        header p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: .9rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        form {
+            display: flex;
+            gap: .5rem;
+            flex-wrap: wrap;
+            margin-bottom: .25rem;
+        }
+
+        input[type="text"], input[type="datetime-local"] {
+            flex: 1 1 10rem;
+            padding: .7rem .9rem;
+            border: 1px solid var(--border);
+            border-radius: .7rem;
+            background: transparent;
+            color: var(--text);
+            font-size: .95rem;
+            font-family: inherit;
+            transition: border-color .15s, box-shadow .15s;
+        }
+
+        input[type="datetime-local"] { flex: 1 1 12rem; color-scheme: light; }
+        @media (prefers-color-scheme: dark) { input[type="datetime-local"] { color-scheme: dark; } }
+
+        input[type="text"]::placeholder { color: var(--text-muted); }
+
+        input[type="text"]:focus, input[type="datetime-local"]:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+
+        form button {
+            flex: 1 1 100%;
+            padding: .7rem 1.1rem;
+            border: none;
+            border-radius: .7rem;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            font-size: .95rem;
+            cursor: pointer;
+            transition: background .15s, transform .1s;
+        }
+
+        form button:hover { background: var(--accent-hover); }
+        form button:active { transform: scale(.98); }
+
+        #error {
+            color: var(--danger);
+            background: var(--danger-soft);
+            border-radius: .6rem;
+            padding: .6rem .8rem;
+            font-size: .85rem;
+            margin: .9rem 0 0;
+        }
+
+        #empty {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: .9rem;
+            padding: 2rem 0 .5rem;
+        }
+
+        ul {
+            list-style: none;
+            margin: 1rem 0 0;
+            padding: 0;
+        }
+
+        li {
+            display: flex;
+            align-items: center;
+            gap: .7rem;
+            padding: .65rem .25rem;
+            border-bottom: 1px solid var(--border);
+            animation: fade-in .15s ease-out;
+        }
+
+        li:last-child { border-bottom: none; }
+
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        input[type="checkbox"] {
+            appearance: none;
+            width: 1.2rem;
+            height: 1.2rem;
+            flex-shrink: 0;
+            border: 1.5px solid var(--border);
+            border-radius: .4rem;
+            cursor: pointer;
+            position: relative;
+            transition: background .15s, border-color .15s;
+        }
+
+        input[type="checkbox"]:checked {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        input[type="checkbox"]:checked::after {
+            content: "";
+            position: absolute;
+            left: .35rem;
+            top: .12rem;
+            width: .3rem;
+            height: .6rem;
+            border: solid #fff;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .todo-text {
+            flex: 1;
+            min-width: 0;
+            font-size: .95rem;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+
+        .todo-text .desc {
+            display: block;
+            color: var(--text-muted);
+            font-size: .8rem;
+        }
+
+        .todo-text .due {
+            display: inline-block;
+            margin-top: .3rem;
+            font-size: .75rem;
+            font-weight: 600;
+            color: var(--accent);
+            background: var(--accent-soft);
+            padding: .1rem .5rem;
+            border-radius: .4rem;
+        }
+
+        .todo-text .due.overdue { color: var(--danger); background: var(--danger-soft); }
+        .todo-text .due.soon { color: var(--warning); background: var(--warning-soft); }
+
+        .done .title { text-decoration: line-through; color: var(--text-muted); }
+        .done .desc { text-decoration: line-through; }
+        .done .due { text-decoration: line-through; }
+
+        .icon-btn {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            width: 2rem;
+            height: 2rem;
+            border-radius: .5rem;
+            cursor: pointer;
+            font-size: .95rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background .15s, color .15s;
+        }
+
+        .icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
+        .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
     </style>
 </head>
 <body>
-    <h1>To-Do List</h1>
-    <form id="todo-form">
-        <input type="text" id="title" placeholder="제목 (예: 20231234)" required>
-        <input type="text" id="description" placeholder="설명 (예: 홍길동)">
-        <button type="submit">Add To-Do</button>
-    </form>
-    <p id="error" role="alert" hidden></p>
-    <ul id="todo-list"></ul>
+    <div class="app">
+        <header>
+            <h1>📝 To-Do List</h1>
+            <p id="subtitle">오늘 할 일을 정리해보세요</p>
+        </header>
+        <div class="card">
+            <form id="todo-form">
+                <input type="text" id="title" placeholder="제목 (예: 과제)" required>
+                <input type="text" id="description" placeholder="설명 (예: DevOps)">
+                <input type="datetime-local" id="due-date" aria-label="마감일">
+                <button type="submit">+ 할 일 추가</button>
+            </form>
+            <p id="error" role="alert" hidden></p>
+            <ul id="todo-list"></ul>
+            <p id="empty" hidden>아직 할 일이 없어요. 위에서 추가해보세요 ✨</p>
+        </div>
+    </div>
     <script>
         const $ = (id) => document.getElementById(id);
-        const listEl = $("todo-list"), errorEl = $("error");
+        const listEl = $("todo-list"), errorEl = $("error"), emptyEl = $("empty"), subtitleEl = $("subtitle");
 
         // 모든 요청을 한 곳에서 처리하고, 실패는 조용히 넘기지 않는다
         async function api(url, method = "GET", body) {
@@ -51,23 +294,67 @@
         const load = () => run("목록 불러오기", async () => render(await api("/todos")));
         const save = (id, todo) => run("수정", async () => { await api(`/todos/${id}`, "PUT", todo); await load(); });
 
-        function button(label, onclick) {
-          return Object.assign(document.createElement("button"), { textContent: label, onclick });
+        const SOON_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // 3일 이내는 임박으로 표시
+
+        function formatDue(dueDate) {
+          const d = new Date(dueDate);
+          const pad = (n) => String(n).padStart(2, "0");
+          return `~${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} 마감`;
+        }
+
+        function dueStatus(dueDate) {
+          const diff = new Date(dueDate) - new Date();
+          if (diff < 0) return "overdue";
+          if (diff <= SOON_THRESHOLD_MS) return "soon";
+          return "";
+        }
+
+        function iconButton(icon, label, extraClass, onclick) {
+          return Object.assign(document.createElement("button"), {
+            type: "button",
+            textContent: icon,
+            title: label,
+            className: `icon-btn${extraClass ? " " + extraClass : ""}`,
+            onclick,
+          });
         }
 
         function render(todos) {
+          emptyEl.hidden = todos.length !== 0;
+          subtitleEl.textContent = todos.length
+            ? `${todos.filter((t) => t.completed).length} / ${todos.length}개 완료`
+            : "오늘 할 일을 정리해보세요";
+
           listEl.replaceChildren(...todos.map((todo) => {
             const check = Object.assign(document.createElement("input"), {
               type: "checkbox",
               checked: todo.completed,
               onchange: () => save(todo.id, { ...todo, completed: check.checked }),
             });
-            const text = Object.assign(document.createElement("span"), {
-              textContent: `${todo.title} — ${todo.description}`,
-              className: todo.completed ? "done" : "",
-            });
+
+            const title = Object.assign(document.createElement("span"), { className: "title", textContent: todo.title });
+            const text = document.createElement("span");
+            text.className = "todo-text";
+            text.append(title);
+            if (todo.description) {
+              text.append(Object.assign(document.createElement("span"), { className: "desc", textContent: todo.description }));
+            }
+            if (todo.due_date) {
+              const status = todo.completed ? "" : dueStatus(todo.due_date);
+              text.append(Object.assign(document.createElement("span"), {
+                className: `due${status ? ` ${status}` : ""}`,
+                textContent: formatDue(todo.due_date),
+              }));
+            }
+
             const li = document.createElement("li");
-            li.append(check, text, button("Edit", () => edit(todo)), button("Delete", () => remove(todo.id)));
+            li.className = todo.completed ? "done" : "";
+            li.append(
+              check,
+              text,
+              iconButton("✏️", "수정", "", () => edit(todo)),
+              iconButton("🗑️", "삭제", "danger", () => remove(todo.id)),
+            );
             return li;
           }));
         }
@@ -77,7 +364,9 @@
           if (title === null) return;
           const description = prompt("새 설명:", todo.description);
           if (description === null) return;
-          save(todo.id, { ...todo, title: title.trim(), description: description.trim() });
+          const dueDate = prompt("새 마감일 (YYYY-MM-DD HH:mm, 없으면 비워두기):", todo.due_date ? todo.due_date.slice(0, 16).replace("T", " ") : "");
+          if (dueDate === null) return;
+          save(todo.id, { ...todo, title: title.trim(), description: description.trim(), due_date: dueDate.trim().replace(" ", "T") || null });
         }
 
         function remove(id) {
@@ -88,7 +377,11 @@
         $("todo-form").onsubmit = (event) => {
           event.preventDefault();
           run("추가", async () => {
-            await api("/todos", "POST", { title: $("title").value.trim(), description: $("description").value.trim() });
+            await api("/todos", "POST", {
+              title: $("title").value.trim(),
+              description: $("description").value.trim(),
+              due_date: $("due-date").value || null,
+            });
             event.target.reset();
             await load();
           });
