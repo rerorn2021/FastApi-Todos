@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 
 fastapi-app/todo.json
+fastapi-app/categories.json

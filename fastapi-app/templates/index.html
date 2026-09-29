@@ -92,7 +92,60 @@
             margin-bottom: .25rem;
         }
 
-        input[type="text"], input[type="datetime-local"] {
+        .tabs {
+            display: flex;
+            gap: .4rem;
+            overflow-x: auto;
+            padding-bottom: .9rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            scrollbar-width: thin;
+        }
+
+        .tab {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .4rem .8rem;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: .85rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+
+        .tab:hover { color: var(--accent); border-color: var(--accent); }
+        .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .tab.add { border-style: dashed; }
+
+        .tab .count {
+            font-size: .7rem;
+            padding: 0 .4rem;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        .tab.active .count { background: rgba(255, 255, 255, .25); color: #fff; }
+
+        .category-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: -.4rem 0 .8rem;
+            font-size: .8rem;
+            color: var(--text-muted);
+        }
+
+        .category-bar[hidden] { display: none; }
+        .category-bar .icon-btn { width: 1.7rem; height: 1.7rem; font-size: .8rem; }
+
+        input[type="text"], input[type="datetime-local"], select {
             flex: 1 1 10rem;
             padding: .7rem .9rem;
             border: 1px solid var(--border);
@@ -109,7 +162,10 @@
 
         input[type="text"]::placeholder { color: var(--text-muted); }
 
-        input[type="text"]:focus, input[type="datetime-local"]:focus {
+        select { flex: 1 1 8rem; cursor: pointer; }
+        select option { background: var(--card-bg); color: var(--text); }
+
+        input[type="text"]:focus, input[type="datetime-local"]:focus, select:focus {
             outline: none;
             border-color: var(--accent);
             box-shadow: 0 0 0 3px var(--accent-soft);
@@ -223,6 +279,17 @@
             border-radius: .4rem;
         }
 
+        .todo-text .category {
+            display: inline-block;
+            margin: .3rem .3rem 0 0;
+            font-size: .75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            padding: .05rem .5rem;
+            border-radius: .4rem;
+        }
+
         .todo-text .due.overdue { color: var(--danger); background: var(--danger-soft); }
         .todo-text .due.soon { color: var(--warning); background: var(--warning-soft); }
 
@@ -256,10 +323,19 @@
             <p id="subtitle">오늘 할 일을 정리해보세요</p>
         </header>
         <div class="card">
+            <nav class="tabs" id="tabs" aria-label="분류"></nav>
+            <div class="category-bar" id="category-bar" hidden>
+                <span id="category-name"></span>
+                <span>
+                    <button type="button" class="icon-btn" id="rename-category" title="분류 이름 변경">✏️</button>
+                    <button type="button" class="icon-btn danger" id="delete-category" title="분류 삭제">🗑️</button>
+                </span>
+            </div>
             <form id="todo-form">
                 <input type="text" id="title" placeholder="제목 (예: 과제)" required>
                 <input type="text" id="description" placeholder="설명 (예: DevOps)">
                 <input type="datetime-local" id="due-date" aria-label="마감일">
+                <select id="category" aria-label="분류"></select>
                 <button type="submit">+ 할 일 추가</button>
             </form>
             <p id="error" role="alert" hidden></p>
@@ -270,6 +346,10 @@
     <script>
         const $ = (id) => document.getElementById(id);
         const listEl = $("todo-list"), errorEl = $("error"), emptyEl = $("empty"), subtitleEl = $("subtitle");
+        const tabsEl = $("tabs"), categorySelectEl = $("category");
+
+        // 선택된 분류: "all" (전체) | "none" (미분류) | 분류 id
+        let state = { todos: [], categories: [], selected: "all" };
 
         // 모든 요청을 한 곳에서 처리하고, 실패는 조용히 넘기지 않는다
         async function api(url, method = "GET", body) {
@@ -291,7 +371,14 @@
           }
         }
 
-        const load = () => run("목록 불러오기", async () => render(await api("/todos")));
+        const load = () => run("목록 불러오기", async () => {
+          const [todos, categories] = await Promise.all([api("/todos"), api("/categories")]);
+          state = { ...state, todos, categories };
+          if (typeof state.selected === "number" && !categories.some((c) => c.id === state.selected)) {
+            state.selected = "all";                      // 지워진 분류를 보고 있었다면 전체로
+          }
+          render();
+        });
         const save = (id, todo) => run("수정", async () => { await api(`/todos/${id}`, "PUT", todo); await load(); });
 
         const SOON_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // 3일 이내는 임박으로 표시
@@ -319,8 +406,57 @@
           });
         }
 
-        function render(todos) {
+        const categoryName = (id) => state.categories.find((c) => c.id === id)?.name;
+
+        function matches(todo, selected) {
+          if (selected === "all") return true;
+          if (selected === "none") return todo.category_id === null;
+          return todo.category_id === selected;
+        }
+
+        function tab(label, key, extraClass = "") {
+          const remaining = state.todos.filter((t) => matches(t, key) && !t.completed).length;
+          const btn = Object.assign(document.createElement("button"), {
+            type: "button",
+            className: `tab${state.selected === key ? " active" : ""}${extraClass ? " " + extraClass : ""}`,
+            textContent: label,
+            onclick: () => { state.selected = key; render(); },
+          });
+          if (remaining) btn.append(Object.assign(document.createElement("span"), { className: "count", textContent: remaining }));
+          return btn;
+        }
+
+        function renderCategories() {
+          const addBtn = Object.assign(document.createElement("button"), {
+            type: "button", className: "tab add", textContent: "+ 분류", title: "분류 추가", onclick: addCategory,
+          });
+          tabsEl.replaceChildren(
+            tab("전체", "all"),
+            ...state.categories.map((c) => tab(c.name, c.id)),
+            ...(state.categories.length ? [tab("미분류", "none")] : []),
+            addBtn,
+          );
+
+          const current = typeof state.selected === "number" ? categoryName(state.selected) : null;
+          $("category-bar").hidden = !current;
+          $("category-name").textContent = current ? `📁 ${current}` : "";
+
+          // 추가 폼의 분류 선택 — 기본값은 지금 보고 있는 분류
+          categorySelectEl.replaceChildren(
+            new Option("미분류", ""),
+            ...state.categories.map((c) => new Option(c.name, c.id)),
+          );
+          categorySelectEl.hidden = state.categories.length === 0;
+          categorySelectEl.value = typeof state.selected === "number" ? state.selected : "";
+        }
+
+        function render() {
+          renderCategories();
+          const todos = state.todos.filter((t) => matches(t, state.selected));
           emptyEl.hidden = todos.length !== 0;
+          emptyEl.textContent = state.selected === "all"
+            ? "아직 할 일이 없어요. 위에서 추가해보세요 ✨"
+            : "이 분류에는 할 일이 없어요 ✨";
           subtitleEl.textContent = todos.length
             ? `${todos.filter((t) => t.completed).length} / ${todos.length}개 완료`
             : "오늘 할 일을 정리해보세요";
@@ -338,6 +474,9 @@
             text.append(title);
             if (todo.description) {
               text.append(Object.assign(document.createElement("span"), { className: "desc", textContent: todo.description }));
+            }
+            if (state.selected === "all" && todo.category_id !== null) {
+              text.append(Object.assign(document.createElement("span"), { className: "category", textContent: `📁 ${categoryName(todo.category_id)}` }));
             }
             if (todo.due_date) {
               const status = todo.completed ? "" : dueStatus(todo.due_date);
@@ -366,8 +505,40 @@
           if (description === null) return;
           const dueDate = prompt("새 마감일 (YYYY-MM-DD HH:mm, 없으면 비워두기):", todo.due_date ? todo.due_date.slice(0, 16).replace("T", " ") : "");
           if (dueDate === null) return;
-          save(todo.id, { ...todo, title: title.trim(), description: description.trim(), due_date: dueDate.trim().replace(" ", "T") || null });
+          let categoryId = todo.category_id;
+          if (state.categories.length) {
+            const names = state.categories.map((c) => c.name).join(", ");
+            const name = prompt(`분류 (${names} 중 하나, 비우면 미분류):`, categoryName(todo.category_id) ?? "");
+            if (name === null) return;
+            const found = state.categories.find((c) => c.name === name.trim());
+            if (name.trim() && !found) { alert(`"${name.trim()}" 분류가 없어요.`); return; }
+            categoryId = found ? found.id : null;
+          }
+          save(todo.id, { ...todo, title: title.trim(), description: description.trim(), due_date: dueDate.trim().replace(" ", "T") || null, category_id: categoryId });
         }
+
+        function addCategory() {
+          const name = prompt("새 분류 이름:");
+          if (!name?.trim()) return;
+          run("분류 추가", async () => {
+            const category = await api("/categories", "POST", { name: name.trim() });
+            state.selected = category.id;
+            await load();
+          });
+        }
+
+        $("rename-category").onclick = () => {
+          const id = state.selected;
+          const name = prompt("분류 이름 변경:", categoryName(id));
+          if (!name?.trim()) return;
+          run("분류 이름 변경", async () => { await api(`/categories/${id}`, "PUT", { name: name.trim() }); await load(); });
+        };
+
+        $("delete-category").onclick = () => {
+          const id = state.selected;
+          if (!confirm(`"${categoryName(id)}" 분류를 삭제할까요? 속한 할 일은 미분류로 옮겨져요.`)) return;
+          run("분류 삭제", async () => { await api(`/categories/${id}`, "DELETE"); await load(); });
+        };
 
         function remove(id) {
           if (!confirm("정말 삭제할까요?")) return;
@@ -381,6 +552,7 @@
               title: $("title").value.trim(),
               description: $("description").value.trim(),
               due_date: $("due-date").value || null,
+              category_id: categorySelectEl.value ? Number(categorySelectEl.value) : null,
             });
             event.target.reset();
             await load();
