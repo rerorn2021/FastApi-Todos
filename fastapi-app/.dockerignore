@@ -7,3 +7,7 @@ venv/
 .env
 Dockerfile
 .dockerignore
+tests/
+todo.json
+categories.json
+data/

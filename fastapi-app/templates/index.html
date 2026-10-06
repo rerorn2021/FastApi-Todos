@@ -145,7 +145,7 @@
         .category-bar[hidden] { display: none; }
         .category-bar .icon-btn { width: 1.7rem; height: 1.7rem; font-size: .8rem; }
 
-        input[type="text"], input[type="datetime-local"], select {
+        input[type="text"], input[type="search"], input[type="datetime-local"], select {
             flex: 1 1 10rem;
             padding: .7rem .9rem;
             border: 1px solid var(--border);
@@ -160,12 +160,14 @@
         input[type="datetime-local"] { flex: 1 1 12rem; color-scheme: light; }
         @media (prefers-color-scheme: dark) { input[type="datetime-local"] { color-scheme: dark; } }
 
-        input[type="text"]::placeholder { color: var(--text-muted); }
+        input[type="text"]::placeholder, input[type="search"]::placeholder { color: var(--text-muted); }
+
+        #search { display: block; width: 100%; margin-top: 1rem; }
 
         select { flex: 1 1 8rem; cursor: pointer; }
         select option { background: var(--card-bg); color: var(--text); }
 
-        input[type="text"]:focus, input[type="datetime-local"]:focus, select:focus {
+        input[type="text"]:focus, input[type="search"]:focus, input[type="datetime-local"]:focus, select:focus {
             outline: none;
             border-color: var(--accent);
             box-shadow: 0 0 0 3px var(--accent-soft);
@@ -219,6 +221,40 @@
         }
 
         li:last-child { border-bottom: none; }
+
+        li.group {                                   /* 숨김 탭의 분류 묶음 제목 */
+            padding: .9rem .25rem .3rem;
+            font-size: .75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+        }
+
+        li.group:first-child { padding-top: 0; }
+
+        .list-footer {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: .75rem;
+            padding-top: .75rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .list-footer[hidden] { display: none; }
+
+        .text-btn {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: .8rem;
+            font-weight: 600;
+            font-family: inherit;
+            padding: .35rem .6rem;
+            border-radius: .5rem;
+            cursor: pointer;
+            transition: background .15s, color .15s;
+        }
+
+        .text-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
 
         @keyframes fade-in {
             from { opacity: 0; transform: translateY(-4px); }
@@ -339,8 +375,12 @@
                 <button type="submit">+ 할 일 추가</button>
             </form>
             <p id="error" role="alert" hidden></p>
+            <input type="search" id="search" placeholder="🔍 제목·설명 검색" aria-label="검색">
             <ul id="todo-list"></ul>
             <p id="empty" hidden>아직 할 일이 없어요. 위에서 추가해보세요 ✨</p>
+            <div class="list-footer" id="list-footer" hidden>
+                <button type="button" class="text-btn danger" id="clear-completed"></button>
+            </div>
         </div>
     </div>
     <script>
@@ -348,8 +388,8 @@
         const listEl = $("todo-list"), errorEl = $("error"), emptyEl = $("empty"), subtitleEl = $("subtitle");
         const tabsEl = $("tabs"), categorySelectEl = $("category");
 
-        // 선택된 분류: "all" (전체) | "none" (미분류) | 분류 id
-        let state = { todos: [], categories: [], selected: "all" };
+        // 선택된 분류: "all" (전체) | "none" (미분류) | "hidden" (숨김) | 분류 id
+        let state = { todos: [], categories: [], selected: "all", query: "" };
 
         // 모든 요청을 한 곳에서 처리하고, 실패는 조용히 넘기지 않는다
         async function api(url, method = "GET", body) {
@@ -376,6 +416,9 @@
           state = { ...state, todos, categories };
           if (typeof state.selected === "number" && !categories.some((c) => c.id === state.selected)) {
             state.selected = "all";                      // 지워진 분류를 보고 있었다면 전체로
+          }
+          if (state.selected === "hidden" && !todos.some((t) => t.hidden)) {
+            state.selected = "all";                      // 숨긴 항목이 다 사라졌다면 전체로
           }
           render();
         });
@@ -409,6 +452,8 @@
         const categoryName = (id) => state.categories.find((c) => c.id === id)?.name;
 
         function matches(todo, selected) {
+          if (selected === "hidden") return todo.hidden;
+          if (todo.hidden) return false;                 // 숨긴 항목은 숨김 탭에서만 보인다
           if (selected === "all") return true;
           if (selected === "none") return todo.category_id === null;
           return todo.category_id === selected;
@@ -434,6 +479,7 @@
             tab("전체", "all"),
             ...state.categories.map((c) => tab(c.name, c.id)),
             ...(state.categories.length ? [tab("미분류", "none")] : []),
+            ...(state.todos.some((t) => t.hidden) ? [tab("🙈 숨김", "hidden")] : []),
             addBtn,
           );
 
@@ -450,52 +496,84 @@
           categorySelectEl.value = typeof state.selected === "number" ? state.selected : "";
         }
 
+        // 검색어가 제목이나 설명에 들어 있는지 (대소문자 무시)
+        function searched(todo) {
+          const keyword = state.query.trim().toLowerCase();
+          return `${todo.title}\n${todo.description}`.toLowerCase().includes(keyword);
+        }
+
+        // 숨김 탭: 분류 순서대로 묶고, 미분류는 맨 뒤에
+        function groupByCategory(todos) {
+          const groups = [...state.categories.map((c) => c.id), null]
+            .map((id) => [id, todos.filter((t) => t.category_id === id)])
+            .filter(([, items]) => items.length);
+          return groups.flatMap(([id, items]) => [
+            Object.assign(document.createElement("li"), {
+              className: "group",
+              textContent: `📁 ${id === null ? "미분류" : categoryName(id)} · ${items.length}`,
+            }),
+            ...items.map(todoItem),
+          ]);
+        }
+
         function render() {
           renderCategories();
-          const todos = state.todos.filter((t) => matches(t, state.selected));
+          const hiddenView = state.selected === "hidden";
+          const inTab = state.todos.filter((t) => matches(t, state.selected));
+          const todos = inTab.filter(searched);
           emptyEl.hidden = todos.length !== 0;
-          emptyEl.textContent = state.selected === "all"
-            ? "아직 할 일이 없어요. 위에서 추가해보세요 ✨"
+          emptyEl.textContent = state.query.trim() ? "검색 결과가 없어요 🔍"
+            : state.selected === "all" ? "아직 할 일이 없어요. 위에서 추가해보세요 ✨"
             : "이 분류에는 할 일이 없어요 ✨";
-          subtitleEl.textContent = todos.length
-            ? `${todos.filter((t) => t.completed).length} / ${todos.length}개 완료`
+          subtitleEl.textContent = inTab.length
+            ? `${inTab.filter((t) => t.completed).length} / ${inTab.length}개 완료`
             : "오늘 할 일을 정리해보세요";
 
-          listEl.replaceChildren(...todos.map((todo) => {
-            const check = Object.assign(document.createElement("input"), {
-              type: "checkbox",
-              checked: todo.completed,
-              onchange: () => save(todo.id, { ...todo, completed: check.checked }),
-            });
+          // 완료 항목 일괄 삭제 — 숨김 탭에서는 숨긴 것만, 그 외에는 보이는 것만 (모든 분류)
+          const doneCount = state.todos.filter((t) => t.completed && t.hidden === hiddenView).length;
+          $("list-footer").hidden = doneCount === 0;
+          $("clear-completed").textContent = `🧹 완료된 ${hiddenView ? "숨긴 " : ""}항목 ${doneCount}개 모두 지우기`;
 
-            const title = Object.assign(document.createElement("span"), { className: "title", textContent: todo.title });
-            const text = document.createElement("span");
-            text.className = "todo-text";
-            text.append(title);
-            if (todo.description) {
-              text.append(Object.assign(document.createElement("span"), { className: "desc", textContent: todo.description }));
-            }
-            if (state.selected === "all" && todo.category_id !== null) {
-              text.append(Object.assign(document.createElement("span"), { className: "category", textContent: `📁 ${categoryName(todo.category_id)}` }));
-            }
-            if (todo.due_date) {
-              const status = todo.completed ? "" : dueStatus(todo.due_date);
-              text.append(Object.assign(document.createElement("span"), {
-                className: `due${status ? ` ${status}` : ""}`,
-                textContent: formatDue(todo.due_date),
-              }));
-            }
+          listEl.replaceChildren(...(hiddenView ? groupByCategory(todos) : todos.map(todoItem)));
+        }
 
-            const li = document.createElement("li");
-            li.className = todo.completed ? "done" : "";
-            li.append(
-              check,
-              text,
-              iconButton("✏️", "수정", "", () => edit(todo)),
-              iconButton("🗑️", "삭제", "danger", () => remove(todo.id)),
-            );
-            return li;
-          }));
+        function todoItem(todo) {
+          const check = Object.assign(document.createElement("input"), {
+            type: "checkbox",
+            checked: todo.completed,
+            onchange: () => save(todo.id, { ...todo, completed: check.checked }),
+          });
+
+          const title = Object.assign(document.createElement("span"), { className: "title", textContent: todo.title });
+          const text = document.createElement("span");
+          text.className = "todo-text";
+          text.append(title);
+          if (todo.description) {
+            text.append(Object.assign(document.createElement("span"), { className: "desc", textContent: todo.description }));
+          }
+          if (state.selected === "all" && todo.category_id !== null) {
+            text.append(Object.assign(document.createElement("span"), { className: "category", textContent: `📁 ${categoryName(todo.category_id)}` }));
+          }
+          if (todo.due_date) {
+            const status = todo.completed ? "" : dueStatus(todo.due_date);
+            text.append(Object.assign(document.createElement("span"), {
+              className: `due${status ? ` ${status}` : ""}`,
+              textContent: formatDue(todo.due_date),
+            }));
+          }
+
+          const li = document.createElement("li");
+          li.className = todo.completed ? "done" : "";
+          li.append(
+            check,
+            text,
+            iconButton("✏️", "수정", "", () => edit(todo)),
+            todo.hidden
+              ? iconButton("👁️", "다시 보이기", "", () => save(todo.id, { ...todo, hidden: false }))
+              : iconButton("🙈", "숨기기", "", () => save(todo.id, { ...todo, hidden: true })),
+            iconButton("🗑️", "삭제", "danger", () => remove(todo.id)),
+          );
+          return li;
         }
 
         function edit(todo) {
@@ -544,6 +622,14 @@
           if (!confirm("정말 삭제할까요?")) return;
           run("삭제", async () => { await api(`/todos/${id}`, "DELETE"); await load(); });
         }
+
+        $("search").oninput = (event) => { state.query = event.target.value; render(); };
+
+        $("clear-completed").onclick = () => {
+          const hidden = state.selected === "hidden";
+          if (!confirm(`완료된 ${hidden ? "숨긴 " : ""}항목을 모든 분류에서 지울까요?`)) return;
+          run("완료 항목 삭제", async () => { await api(`/todos/completed?hidden=${hidden}`, "DELETE"); await load(); });
+        };
 
         $("todo-form").onsubmit = (event) => {
           event.preventDefault();

@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -8,8 +9,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 BASE_DIR = Path(__file__).resolve().parent       # main.py 가 있는 폴더
-TODO_FILE = BASE_DIR / "todo.json"
-CATEGORY_FILE = BASE_DIR / "categories.json"
+DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR))  # 데이터 폴더 — 컨테이너에선 볼륨 경로로 지정
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+TODO_FILE = DATA_DIR / "todo.json"
+CATEGORY_FILE = DATA_DIR / "categories.json"
 INDEX_FILE = BASE_DIR / "templates" / "index.html"
 
 for f in (TODO_FILE, CATEGORY_FILE):             # 없으면 빈 목록으로 만들어 둔다
@@ -25,6 +28,7 @@ class TodoIn(BaseModel):                         # 클라이언트가 보내는 
     completed: bool = False
     due_date: datetime | None = None              # 마감일 (분 단위, 선택)
     category_id: int | None = None                # 분류 (없으면 미분류)
+    hidden: bool = False                          # 숨김 — 목록에서 빼두고 숨김 탭에서만 본다
 
 
 class TodoItem(TodoIn):                          # 서버가 돌려주는 데이터 (id 있음)
@@ -81,9 +85,10 @@ def check_unique_name(categories: list[Category], name: str, exclude_id: int | N
         raise HTTPException(409, "Category name already exists")
 
 
-@app.get("/todos")                               # 목록 조회
-def get_todos() -> list[TodoItem]:
-    return load_todos()
+@app.get("/todos")                               # 목록 조회 — q 가 있으면 제목·설명에서 검색
+def get_todos(q: str = "") -> list[TodoItem]:
+    keyword = q.strip().casefold()
+    return [t for t in load_todos() if keyword in f"{t.title}\n{t.description}".casefold()]
 
 
 @app.post("/todos", status_code=201)             # 추가 — id 는 서버가 매긴다
@@ -94,6 +99,14 @@ def create_todo(payload: TodoIn) -> TodoItem:
     todo = TodoItem(id=new_id, **payload.model_dump())
     save_todos(todos + [todo])
     return todo
+
+
+@app.delete("/todos/completed")                  # 완료 항목 일괄 삭제 — 숨김 여부가 같은 것만 (/todos/{todo_id} 보다 먼저 선언)
+def delete_completed_todos(hidden: bool = False) -> dict[str, int]:
+    todos = load_todos()
+    remaining = [t for t in todos if not (t.completed and t.hidden == hidden)]
+    save_todos(remaining)
+    return {"deleted": len(todos) - len(remaining)}
 
 
 @app.put("/todos/{todo_id}")                     # 수정

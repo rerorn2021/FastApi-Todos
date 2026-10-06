@@ -7,9 +7,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# root가 아닌 실행 전용 사용자 생성
+# root가 아닌 실행 전용 사용자 생성 + 데이터 폴더 (볼륨을 붙일 자리, appuser 소유로 미리 만들어 둬야 쓰기 가능)
 RUN useradd --create-home --uid 10001 appuser \
- && mkdir /app && chown appuser:appuser /app
+ && mkdir -p /app/data && chown -R appuser:appuser /app
+
+# todo.json / categories.json 저장 위치 — 컨테이너를 새로 만들어도 남도록 여기에 볼륨을 붙인다
+ENV DATA_DIR=/app/data
+VOLUME /app/data
 
 # 작업 디렉토리 설정
 WORKDIR /app
