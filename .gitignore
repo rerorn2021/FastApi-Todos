@@ -3,3 +3,10 @@ __pycache__/
 
 fastapi-app/todo.json
 fastapi-app/categories.json
+
+# 테스트 결과물
+.coverage
+htmlcov/
+pytest_report/
+integration_report/
+.playwright-mcp/
