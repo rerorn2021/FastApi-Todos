@@ -82,4 +82,5 @@ volumes:                                        # ← 최상위(0칸)로 이동
   prometheus-data:
   grafana-data:
   todo-data:
+    external: true
     name: todo-data               # 이름 고정 — Jenkins 배포(-v todo-data:/app/data)와 같은 볼륨을 쓴다

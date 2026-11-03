@@ -1,12 +1,17 @@
 import json
 import os
-from datetime import datetime
+
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, StringConstraints
+from prometheus_client.core import REGISTRY, GaugeMetricFamily
+from prometheus_client.registry import Collector
+from prometheus_fastapi_instrumentator import Instrumentator  # ← 추가
+from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 BASE_DIR = Path(__file__).resolve().parent       # main.py 가 있는 폴더
 DATA_DIR = Path(os.environ.get("DATA_DIR", BASE_DIR))  # 데이터 폴더 — 컨테이너에선 볼륨 경로로 지정
@@ -21,6 +26,13 @@ for f in (TODO_FILE, CATEGORY_FILE):             # 없으면 빈 목록으로 �
 
 app = FastAPI(title="To-Do List API")
 
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+
+Priority = Literal["low", "medium", "high"]
+PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}  # 정렬 순서 — 높음이 먼저
+SOON = timedelta(days=3)                            # 화면의 '임박' 기준과 같다
+
 
 class TodoIn(BaseModel):                         # 클라이언트가 보내는 데이터 (id 없음)
     title: str = Field(min_length=1, max_length=100)
@@ -29,10 +41,23 @@ class TodoIn(BaseModel):                         # 클라이언트가 보내는 
     due_date: datetime | None = None              # 마감일 (분 단위, 선택)
     category_id: int | None = None                # 분류 (없으면 미분류)
     hidden: bool = False                          # 숨김 — 목록에서 빼두고 숨김 탭에서만 본다
+    priority: Priority = "medium"                 # 우선순위
+
+
+class TodoPatch(BaseModel):                       # 부분 수정 — 보낸 필드만 바꾼다
+    title: str | None = None
+    description: str | None = None
+    completed: bool | None = None
+    due_date: datetime | None = None
+    category_id: int | None = None
+    hidden: bool | None = None
+    priority: Priority | None = None
 
 
 class TodoItem(TodoIn):                          # 서버가 돌려주는 데이터 (id 있음)
     id: int
+    created_at: datetime | None = None            # 서버가 기록 — 이 기능 전에 만든 항목은 없음
+    updated_at: datetime | None = None
 
 
 class CategoryIn(BaseModel):                      # 분류 (대분류 한 단계)
@@ -85,10 +110,43 @@ def check_unique_name(categories: list[Category], name: str, exclude_id: int | N
         raise HTTPException(409, "Category name already exists")
 
 
-@app.get("/todos")                               # 목록 조회 — q 가 있으면 제목·설명에서 검색
-def get_todos(q: str = "") -> list[TodoItem]:
+def local_naive(d: datetime) -> datetime:        # 시간대가 붙어 와도 서버 현지 시각으로 맞춰 비교
+    return d.astimezone().replace(tzinfo=None) if d.tzinfo else d
+
+
+def due_status(todo: TodoItem, now: datetime) -> str | None:  # 미완료 항목의 마감 상태
+    if todo.due_date is None or todo.completed:
+        return None
+    due = local_naive(todo.due_date)
+    if due < now:
+        return "overdue"
+    if due.date() == now.date():
+        return "today"
+    if due <= now + SOON:
+        return "upcoming"
+    return None
+
+
+SORT_KEYS = {                                     # 마감일·생성일이 없는 항목은 맨 뒤로
+    "due_date": lambda t: (t.due_date is None, t.due_date and local_naive(t.due_date)),
+    "priority": lambda t: PRIORITY_RANK[t.priority],
+    "created_at": lambda t: (t.created_at is None, t.created_at and local_naive(t.created_at)),
+    "title": lambda t: t.title.casefold(),
+}
+
+
+@app.get("/todos")                               # 목록 조회 — 검색(q), 마감 상태(status), 정렬(sort)
+def get_todos(
+    q: str = "",
+    status: Literal["overdue", "today", "upcoming"] | None = None,
+    sort: Literal["due_date", "priority", "created_at", "title"] | None = None,
+) -> list[TodoItem]:
     keyword = q.strip().casefold()
-    return [t for t in load_todos() if keyword in f"{t.title}\n{t.description}".casefold()]
+    now = datetime.now()
+    todos = [t for t in load_todos() if keyword in f"{t.title}\n{t.description}".casefold()]
+    if status:
+        todos = [t for t in todos if due_status(t, now) == status]
+    return sorted(todos, key=SORT_KEYS[sort]) if sort else todos
 
 
 @app.post("/todos", status_code=201)             # 추가 — id 는 서버가 매긴다
@@ -96,7 +154,8 @@ def create_todo(payload: TodoIn) -> TodoItem:
     check_category(payload.category_id)
     todos = load_todos()
     new_id = max((t.id for t in todos), default=0) + 1
-    todo = TodoItem(id=new_id, **payload.model_dump())
+    now = datetime.now()
+    todo = TodoItem(id=new_id, created_at=now, updated_at=now, **payload.model_dump())
     save_todos(todos + [todo])
     return todo
 
@@ -113,8 +172,26 @@ def delete_completed_todos(hidden: bool = False) -> dict[str, int]:
 def update_todo(todo_id: int, payload: TodoIn) -> TodoItem:
     check_category(payload.category_id)
     todos = load_todos()
-    todo = TodoItem(id=todo_id, **payload.model_dump())
-    todos[find_index(todos, todo_id)] = todo
+    index = find_index(todos, todo_id)
+    todo = TodoItem(id=todo_id, created_at=todos[index].created_at, updated_at=datetime.now(), **payload.model_dump())
+    todos[index] = todo
+    save_todos(todos)
+    return todo
+
+
+@app.patch("/todos/{todo_id}")                   # 부분 수정 — 완료 체크·숨김처럼 일부 필드만 바꿀 때
+def patch_todo(todo_id: int, payload: TodoPatch) -> TodoItem:
+    todos = load_todos()
+    index = find_index(todos, todo_id)
+    changes = payload.model_dump(exclude_unset=True)
+    if "category_id" in changes:
+        check_category(changes["category_id"])
+    try:                                          # 합친 결과를 TodoIn 규칙(제목 길이 등)으로 다시 검사
+        merged = TodoIn(**{**todos[index].model_dump(include=set(TodoIn.model_fields)), **changes})
+    except ValidationError as e:
+        raise RequestValidationError(e.errors()) from e
+    todo = TodoItem(id=todo_id, created_at=todos[index].created_at, updated_at=datetime.now(), **merged.model_dump())
+    todos[index] = todo
     save_todos(todos)
     return todo
 
@@ -162,6 +239,26 @@ def delete_category(category_id: int) -> None:
         if todo.category_id == category_id:
             todo.category_id = None
     save_todos(todos)
+
+
+class TodoCollector(Collector):                   # /metrics 스크레이프 때마다 파일을 읽어 할 일 현황을 내보낸다
+    def collect(self):
+        todos = load_todos()
+        now = datetime.now()
+        items = GaugeMetricFamily("todo_items", "Number of to-do items by state", labels=["state"])
+        items.add_metric(["total"], len(todos))
+        items.add_metric(["completed"], sum(t.completed for t in todos))
+        items.add_metric(["pending"], sum(not t.completed for t in todos))
+        items.add_metric(["hidden"], sum(t.hidden for t in todos))
+        items.add_metric(["overdue"], sum(due_status(t, now) == "overdue" for t in todos))
+        yield items
+        pending = GaugeMetricFamily("todo_pending_by_priority", "Pending to-do items by priority", labels=["priority"])
+        for priority in PRIORITY_RANK:
+            pending.add_metric([priority], sum(not t.completed and t.priority == priority for t in todos))
+        yield pending
+
+
+REGISTRY.register(TodoCollector())
 
 
 @app.get("/", include_in_schema=False)           # 화면 서빙

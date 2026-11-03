@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -185,6 +187,114 @@ def test_delete_category_moves_todos_to_uncategorized():
 
 def test_delete_category_not_found():
     assert client.delete("/categories/1").status_code == 404
+
+
+# ---- 우선순위 · 생성/수정 시각 ----
+
+def test_create_todo_default_priority_and_timestamps():
+    body = client.post("/todos", json={"title": "Test"}).json()
+    assert body["priority"] == "medium"
+    assert body["created_at"] is not None
+    assert body["created_at"] == body["updated_at"]
+
+def test_create_todo_invalid_priority():
+    assert client.post("/todos", json={"title": "Test", "priority": "urgent"}).status_code == 422
+
+def test_update_todo_keeps_created_at():
+    created = client.post("/todos", json={"title": "Test"}).json()
+    updated = client.put("/todos/1", json={"title": "Updated", "priority": "high"}).json()
+    assert updated["created_at"] == created["created_at"]
+    assert updated["updated_at"] >= created["updated_at"]
+    assert updated["priority"] == "high"
+
+def test_old_todo_without_new_fields():
+    main.TODO_FILE.write_text('[{"id": 1, "title": "Old"}]', encoding="utf-8")  # 기능 추가 전 데이터
+    body = client.get("/todos").json()[0]
+    assert body["priority"] == "medium"
+    assert body["created_at"] is None
+
+
+# ---- 부분 수정 (PATCH) ----
+
+def test_patch_todo_changes_only_given_fields():
+    client.post("/todos", json={"title": "Test", "description": "keep", "priority": "low"})
+    body = client.patch("/todos/1", json={"completed": True}).json()
+    assert body["completed"] is True
+    assert body["description"] == "keep"
+    assert body["priority"] == "low"
+    assert load_todos()[0].completed is True
+
+def test_patch_todo_can_clear_field():
+    save_categories([Category(id=1, name="학교")])
+    client.post("/todos", json={"title": "Test", "category_id": 1, "due_date": "2026-01-01T09:00"})
+    body = client.patch("/todos/1", json={"category_id": None, "due_date": None}).json()
+    assert body["category_id"] is None
+    assert body["due_date"] is None
+
+@pytest.mark.parametrize("payload", [{"title": ""}, {"title": None}, {"priority": "urgent"}])
+def test_patch_todo_invalid(payload):
+    client.post("/todos", json={"title": "Test"})
+    assert client.patch("/todos/1", json=payload).status_code == 422
+    assert load_todos()[0].title == "Test"
+
+def test_patch_todo_unknown_category():
+    client.post("/todos", json={"title": "Test"})
+    assert client.patch("/todos/1", json={"category_id": 99}).status_code == 400
+
+def test_patch_todo_not_found():
+    assert client.patch("/todos/1", json={"completed": True}).status_code == 404
+
+
+# ---- 정렬 · 마감 상태 필터 ----
+
+def ids(params):
+    return [t["id"] for t in client.get("/todos", params=params).json()]
+
+def test_sort_todos():
+    save_todos([
+        TodoItem(id=1, title="b", priority="low", due_date=datetime(2026, 3, 1), created_at=datetime(2026, 1, 2)),
+        TodoItem(id=2, title="C", priority="high"),
+        TodoItem(id=3, title="a", priority="medium", due_date=datetime(2026, 2, 1), created_at=datetime(2026, 1, 1)),
+    ])
+    assert ids({"sort": "priority"}) == [2, 3, 1]
+    assert ids({"sort": "due_date"}) == [3, 1, 2]      # 마감일 없는 항목은 맨 뒤
+    assert ids({"sort": "created_at"}) == [3, 1, 2]
+    assert ids({"sort": "title"}) == [3, 1, 2]         # 대소문자 무시
+    assert ids({}) == [1, 2, 3]                        # 기본은 저장 순서
+
+def test_sort_todos_invalid():
+    assert client.get("/todos", params={"sort": "nope"}).status_code == 422
+
+def test_filter_todos_by_due_status():
+    now = datetime.now()
+    save_todos([
+        TodoItem(id=1, title="지남", due_date=now - timedelta(minutes=1)),
+        TodoItem(id=2, title="지났지만 완료", due_date=now - timedelta(days=1), completed=True),
+        TodoItem(id=3, title="임박", due_date=now + timedelta(days=2)),
+        TodoItem(id=4, title="먼 미래", due_date=now + timedelta(days=30)),
+        TodoItem(id=5, title="마감 없음"),
+    ])
+    assert ids({"status": "overdue"}) == [1]
+    assert ids({"status": "upcoming"}) == [3]          # 3일 이내 (오늘 제외)
+    assert ids({"status": "today"}) == []
+    assert client.get("/todos", params={"status": "nope"}).status_code == 422
+
+
+# ---- 메트릭 ----
+
+def test_metrics_include_todo_counts():
+    save_todos([
+        TodoItem(id=1, title="a", completed=True),
+        TodoItem(id=2, title="b", priority="high", due_date=datetime(2000, 1, 1)),
+        TodoItem(id=3, title="c", hidden=True),
+    ])
+    text = client.get("/metrics").text
+    assert 'todo_items{state="total"} 3.0' in text
+    assert 'todo_items{state="completed"} 1.0' in text
+    assert 'todo_items{state="overdue"} 1.0' in text
+    assert 'todo_items{state="hidden"} 1.0' in text
+    assert 'todo_pending_by_priority{priority="high"} 1.0' in text
+    assert 'todo_pending_by_priority{priority="medium"} 1.0' in text
 
 
 # ---- 화면 ----

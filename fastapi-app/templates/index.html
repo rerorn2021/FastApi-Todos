@@ -162,7 +162,8 @@
 
         input[type="text"]::placeholder, input[type="search"]::placeholder { color: var(--text-muted); }
 
-        #search { display: block; width: 100%; margin-top: 1rem; }
+        .toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
+        .toolbar #search { flex: 3 1 12rem; }
 
         select { flex: 1 1 8rem; cursor: pointer; }
         select option { background: var(--card-bg); color: var(--text); }
@@ -326,6 +327,18 @@
             border-radius: .4rem;
         }
 
+        .todo-text .priority {
+            display: inline-block;
+            margin: .3rem .3rem 0 0;
+            font-size: .75rem;
+            font-weight: 700;
+            padding: .05rem .5rem;
+            border-radius: .4rem;
+        }
+
+        .todo-text .priority.high { color: var(--danger); background: var(--danger-soft); }
+        .todo-text .priority.low { color: var(--text-muted); border: 1px solid var(--border); }
+
         .todo-text .due.overdue { color: var(--danger); background: var(--danger-soft); }
         .todo-text .due.soon { color: var(--warning); background: var(--warning-soft); }
 
@@ -372,10 +385,23 @@
                 <input type="text" id="description" placeholder="설명 (예: DevOps)">
                 <input type="datetime-local" id="due-date" aria-label="마감일">
                 <select id="category" aria-label="분류"></select>
+                <select id="priority" aria-label="우선순위">
+                    <option value="high">🔴 높음</option>
+                    <option value="medium" selected>보통</option>
+                    <option value="low">낮음</option>
+                </select>
                 <button type="submit">+ 할 일 추가</button>
             </form>
             <p id="error" role="alert" hidden></p>
-            <input type="search" id="search" placeholder="🔍 제목·설명 검색" aria-label="검색">
+            <div class="toolbar">
+                <input type="search" id="search" placeholder="🔍 제목·설명 검색" aria-label="검색">
+                <select id="sort" aria-label="정렬">
+                    <option value="">추가한 순</option>
+                    <option value="due_date">마감일 순</option>
+                    <option value="priority">우선순위 순</option>
+                    <option value="title">제목 순</option>
+                </select>
+            </div>
             <ul id="todo-list"></ul>
             <p id="empty" hidden>아직 할 일이 없어요. 위에서 추가해보세요 ✨</p>
             <div class="list-footer" id="list-footer" hidden>
@@ -389,7 +415,9 @@
         const tabsEl = $("tabs"), categorySelectEl = $("category");
 
         // 선택된 분류: "all" (전체) | "none" (미분류) | "hidden" (숨김) | 분류 id
-        let state = { todos: [], categories: [], selected: "all", query: "" };
+        let state = { todos: [], categories: [], selected: "all", query: "", sort: "" };
+
+        const PRIORITY_LABELS = { high: "높음", medium: "보통", low: "낮음" };
 
         // 모든 요청을 한 곳에서 처리하고, 실패는 조용히 넘기지 않는다
         async function api(url, method = "GET", body) {
@@ -412,7 +440,7 @@
         }
 
         const load = () => run("목록 불러오기", async () => {
-          const [todos, categories] = await Promise.all([api("/todos"), api("/categories")]);
+          const [todos, categories] = await Promise.all([api(`/todos${state.sort ? `?sort=${state.sort}` : ""}`), api("/categories")]);
           state = { ...state, todos, categories };
           if (typeof state.selected === "number" && !categories.some((c) => c.id === state.selected)) {
             state.selected = "all";                      // 지워진 분류를 보고 있었다면 전체로
@@ -422,7 +450,8 @@
           }
           render();
         });
-        const save = (id, todo) => run("수정", async () => { await api(`/todos/${id}`, "PUT", todo); await load(); });
+        // 바뀐 필드만 보낸다 (PATCH)
+        const save = (id, changes) => run("수정", async () => { await api(`/todos/${id}`, "PATCH", changes); await load(); });
 
         const SOON_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // 3일 이내는 임박으로 표시
 
@@ -541,7 +570,7 @@
           const check = Object.assign(document.createElement("input"), {
             type: "checkbox",
             checked: todo.completed,
-            onchange: () => save(todo.id, { ...todo, completed: check.checked }),
+            onchange: () => save(todo.id, { completed: check.checked }),
           });
 
           const title = Object.assign(document.createElement("span"), { className: "title", textContent: todo.title });
@@ -550,6 +579,12 @@
           text.append(title);
           if (todo.description) {
             text.append(Object.assign(document.createElement("span"), { className: "desc", textContent: todo.description }));
+          }
+          if (todo.priority !== "medium") {             // 보통은 배지 없이
+            text.append(Object.assign(document.createElement("span"), {
+              className: `priority ${todo.priority}`,
+              textContent: `${todo.priority === "high" ? "🔴 " : ""}${PRIORITY_LABELS[todo.priority]}`,
+            }));
           }
           if (state.selected === "all" && todo.category_id !== null) {
             text.append(Object.assign(document.createElement("span"), { className: "category", textContent: `📁 ${categoryName(todo.category_id)}` }));
@@ -569,8 +604,8 @@
             text,
             iconButton("✏️", "수정", "", () => edit(todo)),
             todo.hidden
-              ? iconButton("👁️", "다시 보이기", "", () => save(todo.id, { ...todo, hidden: false }))
-              : iconButton("🙈", "숨기기", "", () => save(todo.id, { ...todo, hidden: true })),
+              ? iconButton("👁️", "다시 보이기", "", () => save(todo.id, { hidden: false }))
+              : iconButton("🙈", "숨기기", "", () => save(todo.id, { hidden: true })),
             iconButton("🗑️", "삭제", "danger", () => remove(todo.id)),
           );
           return li;
@@ -592,7 +627,11 @@
             if (name.trim() && !found) { alert(`"${name.trim()}" 분류가 없어요.`); return; }
             categoryId = found ? found.id : null;
           }
-          save(todo.id, { ...todo, title: title.trim(), description: description.trim(), due_date: dueDate.trim().replace(" ", "T") || null, category_id: categoryId });
+          const priorityName = prompt("우선순위 (높음, 보통, 낮음):", PRIORITY_LABELS[todo.priority]);
+          if (priorityName === null) return;
+          const priority = Object.keys(PRIORITY_LABELS).find((k) => PRIORITY_LABELS[k] === priorityName.trim());
+          if (!priority) { alert(`"${priorityName.trim()}" 우선순위가 없어요.`); return; }
+          save(todo.id, { title: title.trim(), description: description.trim(), due_date: dueDate.trim().replace(" ", "T") || null, category_id: categoryId, priority });
         }
 
         function addCategory() {
@@ -624,6 +663,7 @@
         }
 
         $("search").oninput = (event) => { state.query = event.target.value; render(); };
+        $("sort").onchange = (event) => { state.sort = event.target.value; load(); };  // 정렬은 서버가 한다
 
         $("clear-completed").onclick = () => {
           const hidden = state.selected === "hidden";
@@ -639,6 +679,7 @@
               description: $("description").value.trim(),
               due_date: $("due-date").value || null,
               category_id: categorySelectEl.value ? Number(categorySelectEl.value) : null,
+              priority: $("priority").value,
             });
             event.target.reset();
             await load();
