@@ -3,6 +3,8 @@ __pycache__/
 
 fastapi-app/todo.json
 fastapi-app/categories.json
+fastapi-app/trash.json
+fastapi-app/*.json.tmp
 
 # 테스트 결과물
 .coverage

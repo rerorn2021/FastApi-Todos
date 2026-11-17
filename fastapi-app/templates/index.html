@@ -19,6 +19,8 @@
             --danger-soft: #fdeceb;
             --warning: #b45a00;
             --warning-soft: #fdf1de;
+            --success: #1f8a4c;
+            --success-soft: #e3f6ea;
             --shadow: 0 20px 40px -20px rgba(62, 32, 224, .3);
         }
 
@@ -37,6 +39,8 @@
                 --danger-soft: #3a2130;
                 --warning: #f5b25c;
                 --warning-soft: #3a2c14;
+                --success: #5fd394;
+                --success-soft: #173326;
                 --shadow: 0 20px 40px -20px rgba(0, 0, 0, .6);
             }
         }
@@ -57,7 +61,10 @@
         .app {
             width: 100%;
             max-width: 30rem;
+            transition: max-width .2s ease;
         }
+
+        .app.wide { max-width: 50rem; }               /* 달력은 넓게 */
 
         header {
             text-align: center;
@@ -85,12 +92,14 @@
             box-shadow: var(--shadow);
         }
 
-        form {
+        #todo-form {
             display: flex;
             gap: .5rem;
             flex-wrap: wrap;
             margin-bottom: .25rem;
         }
+
+        #todo-form[hidden], .toolbar[hidden] { display: none; }
 
         .tabs {
             display: flex;
@@ -145,7 +154,7 @@
         .category-bar[hidden] { display: none; }
         .category-bar .icon-btn { width: 1.7rem; height: 1.7rem; font-size: .8rem; }
 
-        input[type="text"], input[type="search"], input[type="datetime-local"], select {
+        input[type="text"], input[type="search"], input[type="datetime-local"], select, textarea {
             flex: 1 1 10rem;
             padding: .7rem .9rem;
             border: 1px solid var(--border);
@@ -157,10 +166,12 @@
             transition: border-color .15s, box-shadow .15s;
         }
 
+        textarea { resize: vertical; line-height: 1.4; }
+
         input[type="datetime-local"] { flex: 1 1 12rem; color-scheme: light; }
         @media (prefers-color-scheme: dark) { input[type="datetime-local"] { color-scheme: dark; } }
 
-        input[type="text"]::placeholder, input[type="search"]::placeholder { color: var(--text-muted); }
+        input[type="text"]::placeholder, input[type="search"]::placeholder, textarea::placeholder { color: var(--text-muted); }
 
         .toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
         .toolbar #search { flex: 3 1 12rem; }
@@ -168,14 +179,13 @@
         select { flex: 1 1 8rem; cursor: pointer; }
         select option { background: var(--card-bg); color: var(--text); }
 
-        input[type="text"]:focus, input[type="search"]:focus, input[type="datetime-local"]:focus, select:focus {
+        input[type="text"]:focus, input[type="search"]:focus, input[type="datetime-local"]:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--accent);
             box-shadow: 0 0 0 3px var(--accent-soft);
         }
 
-        form button {
-            flex: 1 1 100%;
+        .primary-btn, #todo-form button {
             padding: .7rem 1.1rem;
             border: none;
             border-radius: .7rem;
@@ -183,12 +193,48 @@
             color: #fff;
             font-weight: 600;
             font-size: .95rem;
+            font-family: inherit;
             cursor: pointer;
             transition: background .15s, transform .1s;
         }
 
-        form button:hover { background: var(--accent-hover); }
-        form button:active { transform: scale(.98); }
+        #todo-form button { flex: 1 1 100%; }
+        .primary-btn:hover, #todo-form button:hover { background: var(--accent-hover); }
+        .primary-btn:active, #todo-form button:active { transform: scale(.98); }
+
+        /* 목록 / 달력 전환 */
+        .view-toggle {
+            display: inline-flex;
+            flex: 0 0 auto;
+            border: 1px solid var(--border);
+            border-radius: .7rem;
+            padding: .2rem;
+            gap: .2rem;
+        }
+
+        .view-toggle button {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 600; font-size: .85rem;
+            font-family: inherit;
+            padding: .45rem .7rem;
+            border-radius: .5rem;
+            cursor: pointer;
+        }
+
+        .view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+
+        .tag-filter {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            margin-top: .75rem;
+            font-size: .8rem;
+            color: var(--text-muted);
+        }
+
+        .tag-filter[hidden] { display: none; }
 
         #error {
             color: var(--danger);
@@ -212,14 +258,20 @@
             padding: 0;
         }
 
+        ul[hidden] { display: none; }
+
         li {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: .7rem;
             padding: .65rem .25rem;
             border-bottom: 1px solid var(--border);
             animation: fade-in .15s ease-out;
+            position: relative;
         }
+
+        li > input[type="checkbox"], li > .icon-btn, li > .drag-handle { margin-top: .1rem; }
+        li > input[type="checkbox"] { margin-top: .15rem; }
 
         li:last-child { border-bottom: none; }
 
@@ -231,6 +283,22 @@
         }
 
         li.group:first-child { padding-top: 0; }
+
+        /* 드래그로 순서 바꾸기 */
+        .drag-handle {
+            cursor: grab;
+            color: var(--text-muted);
+            opacity: .45;
+            font-size: .9rem;
+            line-height: 1.2rem;
+            user-select: none;
+            transition: opacity .15s;
+        }
+
+        li:hover .drag-handle { opacity: 1; }
+        li.dragging { opacity: .4; }
+        li.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+        li.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
 
         .list-footer {
             display: flex;
@@ -252,10 +320,21 @@
             padding: .35rem .6rem;
             border-radius: .5rem;
             cursor: pointer;
+            text-decoration: none;
             transition: background .15s, color .15s;
         }
 
+        .text-btn:hover { background: var(--accent-soft); color: var(--accent); }
         .text-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+        .text-btn[hidden] { display: none; }
+
+        .data-bar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: .25rem;
+            margin-top: 1rem;
+        }
 
         @keyframes fade-in {
             from { opacity: 0; transform: translateY(-4px); }
@@ -271,6 +350,7 @@
             border-radius: .4rem;
             cursor: pointer;
             position: relative;
+            margin: 0;
             transition: background .15s, border-color .15s;
         }
 
@@ -305,42 +385,84 @@
             font-size: .8rem;
         }
 
-        .todo-text .due {
-            display: inline-block;
-            margin-top: .3rem;
-            font-size: .75rem;
-            font-weight: 600;
-            color: var(--accent);
-            background: var(--accent-soft);
-            padding: .1rem .5rem;
-            border-radius: .4rem;
-        }
-
-        .todo-text .category {
+        .badge, .todo-text .due, .todo-text .category, .todo-text .priority {
             display: inline-block;
             margin: .3rem .3rem 0 0;
             font-size: .75rem;
             font-weight: 600;
-            color: var(--text-muted);
-            border: 1px solid var(--border);
             padding: .05rem .5rem;
             border-radius: .4rem;
+            vertical-align: middle;
         }
 
-        .todo-text .priority {
-            display: inline-block;
-            margin: .3rem .3rem 0 0;
-            font-size: .75rem;
-            font-weight: 700;
-            padding: .05rem .5rem;
-            border-radius: .4rem;
-        }
-
+        .todo-text .due { color: var(--accent); background: var(--accent-soft); padding: .1rem .5rem; }
+        .todo-text .category { color: var(--text-muted); border: 1px solid var(--border); }
+        .todo-text .priority { font-weight: 700; }
         .todo-text .priority.high { color: var(--danger); background: var(--danger-soft); }
         .todo-text .priority.low { color: var(--text-muted); border: 1px solid var(--border); }
-
         .todo-text .due.overdue { color: var(--danger); background: var(--danger-soft); }
         .todo-text .due.soon { color: var(--warning); background: var(--warning-soft); }
+
+        .badge.repeat { color: var(--success); background: var(--success-soft); }
+        .badge.meta { color: var(--text-muted); padding-left: 0; }
+
+        button.tag {
+            border: none;
+            font-family: inherit;
+            color: var(--accent);
+            background: transparent;
+            padding: .05rem .2rem;
+            cursor: pointer;
+        }
+
+        button.tag:hover, button.tag.active { background: var(--accent-soft); }
+
+        /* 하위 작업 진행률 */
+        button.progress {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-muted);
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        button.progress:hover { border-color: var(--accent); color: var(--accent); }
+
+        .bar {
+            width: 2.5rem;
+            height: .3rem;
+            border-radius: 999px;
+            background: var(--border);
+            overflow: hidden;
+        }
+
+        .bar > span { display: block; height: 100%; background: var(--success); transition: width .2s; }
+
+        .subtasks {
+            margin-top: .5rem;
+            padding: .4rem .6rem;
+            border-left: 2px solid var(--accent-soft);
+            display: flex;
+            flex-direction: column;
+            gap: .3rem;
+        }
+
+        .subtask {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            font-size: .85rem;
+        }
+
+        .subtask input[type="checkbox"] { width: 1rem; height: 1rem; }
+        .subtask input[type="checkbox"]:checked::after { left: .28rem; top: .06rem; width: .25rem; height: .5rem; }
+        .subtask span { flex: 1; }
+        .subtask.checked span { text-decoration: line-through; color: var(--text-muted); }
+        .subtask .icon-btn { width: 1.4rem; height: 1.4rem; font-size: .75rem; }
+        .subtasks input[type="text"] { padding: .35rem .6rem; font-size: .8rem; border-radius: .5rem; }
 
         .done .title { text-decoration: line-through; color: var(--text-muted); }
         .done .desc { text-decoration: line-through; }
@@ -352,6 +474,7 @@
             color: var(--text-muted);
             width: 2rem;
             height: 2rem;
+            flex-shrink: 0;
             border-radius: .5rem;
             cursor: pointer;
             font-size: .95rem;
@@ -363,10 +486,190 @@
 
         .icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
         .icon-btn.danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+        /* 달력 */
+        .calendar { margin-top: 1rem; }
+        .calendar[hidden] { display: none; }
+
+        .cal-head {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            margin-bottom: .6rem;
+        }
+
+        .cal-head h2 { flex: 1; margin: 0; font-size: 1.05rem; font-weight: 800; text-align: center; }
+
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            border-top: 1px solid var(--border);
+            border-left: 1px solid var(--border);
+        }
+
+        .cal-weekday {
+            padding: .35rem 0;
+            text-align: center;
+            font-size: .7rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .cal-day {
+            min-height: 5.5rem;
+            padding: .25rem;
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: .15rem;
+            min-width: 0;
+            cursor: pointer;
+            transition: background .15s;
+        }
+
+        .cal-day:hover { background: var(--accent-soft); }
+        .cal-day.other { opacity: .45; }
+        .cal-day.drop { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+        .cal-weekday.sun, .cal-day.sun .num { color: var(--danger); }
+        .cal-weekday.sat, .cal-day.sat .num { color: var(--accent); }
+
+        .cal-day .num {
+            font-size: .75rem;
+            font-weight: 700;
+            width: 1.4rem;
+            height: 1.4rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+        }
+
+        .cal-day.today .num { background: var(--accent); color: #fff; }
+
+        .chip {
+            display: block;
+            width: 100%;
+            border: none;
+            border-left: 3px solid var(--accent);
+            border-radius: .3rem;
+            padding: .1rem .3rem;
+            font-weight: 600; font-size: .68rem; line-height: 1.3;
+            font-family: inherit;
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text);
+            background: var(--accent-soft);
+            cursor: grab;
+        }
+
+        .chip.high { border-left-color: var(--danger); background: var(--danger-soft); }
+        .chip.low { border-left-color: var(--text-muted); background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+        .chip.overdue { color: var(--danger); }
+        .chip.done { text-decoration: line-through; color: var(--text-muted); opacity: .7; }
+        .chip.extra { display: none; }
+        .cal-day.open .chip.extra { display: block; }
+
+        .more {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 600; font-size: .65rem;
+            font-family: inherit;
+            text-align: left;
+            padding: 0 .2rem;
+            cursor: pointer;
+        }
+
+        .cal-note { margin: .6rem 0 0; font-size: .75rem; color: var(--text-muted); text-align: center; }
+
+        @media (max-width: 34rem) {
+            .cal-day { min-height: 3.6rem; }
+            .chip { font-size: .6rem; padding: 0 .2rem; }
+        }
+
+        /* 수정 창 */
+        dialog {
+            width: min(30rem, calc(100vw - 2rem));
+            border: 1px solid var(--border);
+            border-radius: 1.1rem;
+            padding: 1.4rem;
+            background: var(--card-bg);
+            color: var(--text);
+            box-shadow: var(--shadow);
+        }
+
+        dialog::backdrop { background: rgba(20, 14, 50, .45); backdrop-filter: blur(2px); }
+        dialog h2 { margin: 0 0 1rem; font-size: 1.1rem; }
+
+        #edit-form { display: flex; flex-wrap: wrap; gap: .7rem; }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: .3rem;
+            flex: 1 1 100%;
+            font-size: .78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .field.half { flex: 1 1 12rem; }
+        .field input, .field select, .field textarea { flex: none; width: 100%; }
+
+        .dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; flex: 1 1 100%; margin-top: .3rem; }
+        .dialog-actions .text-btn { font-size: .9rem; padding: .6rem 1rem; }
+
+        #edit-error { flex: 1 1 100%; margin: 0; color: var(--danger); font-size: .85rem; }
+
+        /* 실행 취소 알림 */
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: 1.5rem;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: .9rem;
+            max-width: calc(100vw - 2rem);
+            padding: .7rem .8rem .7rem 1.1rem;
+            border-radius: .9rem;
+            background: #1c1836;
+            color: #f1eefc;
+            font-size: .9rem;
+            box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .5);
+            animation: toast-in .2s ease-out;
+            z-index: 10;
+        }
+
+        .toast[hidden] { display: none; }
+
+        .toast button {
+            border: none;
+            background: rgba(255, 255, 255, .12);
+            color: #b9adff;
+            font-weight: 700; font-size: .85rem;
+            font-family: inherit;
+            padding: .4rem .7rem;
+            border-radius: .5rem;
+            cursor: pointer;
+        }
+
+        .toast button[hidden] { display: none; }
+        .toast button:hover { background: rgba(255, 255, 255, .2); }
+
+        @keyframes toast-in {
+            from { opacity: 0; transform: translate(-50%, .5rem); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
     </style>
 </head>
 <body>
-    <div class="app">
+    <div class="app" id="app">
         <header>
             <h1>📝 To-Do List</h1>
             <p id="subtitle">오늘 할 일을 정리해보세요</p>
@@ -381,7 +684,7 @@
                 </span>
             </div>
             <form id="todo-form">
-                <input type="text" id="title" placeholder="제목 (예: 과제)" required>
+                <input type="text" id="title" placeholder="제목 (예: 과제)" required maxlength="100">
                 <input type="text" id="description" placeholder="설명 (예: DevOps)">
                 <input type="datetime-local" id="due-date" aria-label="마감일">
                 <select id="category" aria-label="분류"></select>
@@ -390,34 +693,103 @@
                     <option value="medium" selected>보통</option>
                     <option value="low">낮음</option>
                 </select>
+                <select id="repeat" aria-label="반복">
+                    <option value="none" selected>반복 안 함</option>
+                    <option value="daily">🔁 매일</option>
+                    <option value="weekly">🔁 매주</option>
+                    <option value="monthly">🔁 매월</option>
+                </select>
+                <input type="text" id="tags" placeholder="🏷️ 태그 (쉼표로 구분)" aria-label="태그">
                 <button type="submit">+ 할 일 추가</button>
             </form>
             <p id="error" role="alert" hidden></p>
-            <div class="toolbar">
-                <input type="search" id="search" placeholder="🔍 제목·설명 검색" aria-label="검색">
+            <div class="toolbar" id="toolbar">
+                <input type="search" id="search" placeholder="🔍 제목·설명·태그 검색" aria-label="검색">
                 <select id="sort" aria-label="정렬">
-                    <option value="">추가한 순</option>
+                    <option value="">내 순서 (끌어서 정렬)</option>
+                    <option value="created_at">추가한 순</option>
                     <option value="due_date">마감일 순</option>
                     <option value="priority">우선순위 순</option>
                     <option value="title">제목 순</option>
                 </select>
+                <div class="view-toggle" role="group" aria-label="보기">
+                    <button type="button" id="view-list" aria-pressed="true">📋 목록</button>
+                    <button type="button" id="view-calendar" aria-pressed="false">📅 달력</button>
+                </div>
+            </div>
+            <div class="tag-filter" id="tag-filter" hidden>
+                <span>태그 필터</span>
+                <button type="button" class="badge tag active" id="tag-filter-clear" title="태그 필터 해제"></button>
             </div>
             <ul id="todo-list"></ul>
+            <section class="calendar" id="calendar" hidden></section>
             <p id="empty" hidden>아직 할 일이 없어요. 위에서 추가해보세요 ✨</p>
             <div class="list-footer" id="list-footer" hidden>
                 <button type="button" class="text-btn danger" id="clear-completed"></button>
+                <button type="button" class="text-btn danger" id="empty-trash" hidden>🔥 휴지통 비우기</button>
             </div>
         </div>
+        <div class="data-bar">
+            <a class="text-btn" href="/export" download>⬇️ JSON 백업</a>
+            <a class="text-btn" href="/export?format=csv" download>⬇️ CSV (엑셀)</a>
+            <button type="button" class="text-btn" id="import-btn">⬆️ 가져오기</button>
+            <input type="file" id="import-file" accept=".json,application/json" hidden>
+        </div>
     </div>
+
+    <dialog id="edit-dialog" aria-labelledby="edit-heading">
+        <form id="edit-form">
+            <h2 id="edit-heading" style="flex: 1 1 100%">✏️ 할 일 수정</h2>
+            <label class="field">제목 <input type="text" id="edit-title" required maxlength="100"></label>
+            <label class="field">설명 <input type="text" id="edit-description"></label>
+            <label class="field half">마감일 <input type="datetime-local" id="edit-due"></label>
+            <label class="field half">반복
+                <select id="edit-repeat">
+                    <option value="none">반복 안 함</option>
+                    <option value="daily">🔁 매일</option>
+                    <option value="weekly">🔁 매주</option>
+                    <option value="monthly">🔁 매월</option>
+                </select>
+            </label>
+            <label class="field half">분류 <select id="edit-category"></select></label>
+            <label class="field half">우선순위
+                <select id="edit-priority">
+                    <option value="high">🔴 높음</option>
+                    <option value="medium">보통</option>
+                    <option value="low">낮음</option>
+                </select>
+            </label>
+            <label class="field">태그 <input type="text" id="edit-tags" placeholder="쉼표로 구분 (예: 학교, 급함)"></label>
+            <label class="field">하위 작업 <textarea id="edit-subtasks" rows="4" placeholder="한 줄에 하나씩"></textarea></label>
+            <p id="edit-error" role="alert" hidden></p>
+            <div class="dialog-actions">
+                <button type="button" class="text-btn" id="edit-cancel">취소</button>
+                <button type="submit" class="primary-btn">저장</button>
+            </div>
+        </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" hidden>
+        <span id="toast-msg"></span>
+        <button type="button" id="toast-action" hidden></button>
+    </div>
+
     <script>
         const $ = (id) => document.getElementById(id);
         const listEl = $("todo-list"), errorEl = $("error"), emptyEl = $("empty"), subtitleEl = $("subtitle");
-        const tabsEl = $("tabs"), categorySelectEl = $("category");
+        const tabsEl = $("tabs"), categorySelectEl = $("category"), calendarEl = $("calendar");
 
-        // 선택된 분류: "all" (전체) | "none" (미분류) | "hidden" (숨김) | 분류 id
-        let state = { todos: [], categories: [], selected: "all", query: "", sort: "" };
+        // 선택된 분류: "all" (전체) | "none" (미분류) | "hidden" (숨김) | "trash" (휴지통) | 분류 id
+        const today = new Date();
+        let state = {
+          todos: [], categories: [], trash: [], selected: "all", query: "", sort: "", tag: null,
+          view: "list", month: new Date(today.getFullYear(), today.getMonth(), 1), expanded: new Set(),
+        };
 
         const PRIORITY_LABELS = { high: "높음", medium: "보통", low: "낮음" };
+        const REPEAT_LABELS = { daily: "매일", weekly: "매주", monthly: "매월" };
+        const pad = (n) => String(n).padStart(2, "0");
+        const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
 
         // 모든 요청을 한 곳에서 처리하고, 실패는 조용히 넘기지 않는다
         async function api(url, method = "GET", body) {
@@ -439,15 +811,32 @@
           }
         }
 
+        // 화면 아래 알림 — 버튼을 주면 '실행 취소' 같은 동작을 붙인다
+        let toastTimer;
+        function toast(message, actionLabel, action) {
+          clearTimeout(toastTimer);
+          $("toast-msg").textContent = message;
+          const btn = $("toast-action");
+          btn.hidden = !action;
+          btn.textContent = actionLabel ?? "";
+          btn.onclick = () => { $("toast").hidden = true; action(); };
+          $("toast").hidden = false;
+          toastTimer = setTimeout(() => { $("toast").hidden = true; }, action ? 6000 : 3000);
+        }
+
         const load = () => run("목록 불러오기", async () => {
-          const [todos, categories] = await Promise.all([api(`/todos${state.sort ? `?sort=${state.sort}` : ""}`), api("/categories")]);
-          state = { ...state, todos, categories };
+          const [todos, categories, trash] = await Promise.all([
+            api(`/todos${state.sort ? `?sort=${state.sort}` : ""}`), api("/categories"), api("/trash"),
+          ]);
+          state = { ...state, todos, categories, trash };
           if (typeof state.selected === "number" && !categories.some((c) => c.id === state.selected)) {
             state.selected = "all";                      // 지워진 분류를 보고 있었다면 전체로
           }
           if (state.selected === "hidden" && !todos.some((t) => t.hidden)) {
             state.selected = "all";                      // 숨긴 항목이 다 사라졌다면 전체로
           }
+          if (state.selected === "trash" && !trash.length) state.selected = "all";
+          if (state.tag && !todos.some((t) => t.tags.includes(state.tag))) state.tag = null;
           render();
         });
         // 바뀐 필드만 보낸다 (PATCH)
@@ -455,11 +844,15 @@
 
         const SOON_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // 3일 이내는 임박으로 표시
 
-        function formatDue(dueDate) {
-          const d = new Date(dueDate);
-          const pad = (n) => String(n).padStart(2, "0");
-          return `~${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} 마감`;
-        }
+        const formatDate = (d) => `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        const formatDue = (dueDate) => `~${formatDate(new Date(dueDate))} 마감`;
+        const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const toInputValue = (iso) => {                  // <input type=datetime-local> 형식 (현지 시각)
+          if (!iso) return "";
+          const d = new Date(iso);
+          return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+        const parseTags = (text) => text.split(",").map((t) => t.trim().replace(/^#/, "")).filter(Boolean);
 
         function dueStatus(dueDate) {
           const diff = new Date(dueDate) - new Date();
@@ -469,7 +862,7 @@
         }
 
         function iconButton(icon, label, extraClass, onclick) {
-          return Object.assign(document.createElement("button"), {
+          return el("button", {
             type: "button",
             textContent: icon,
             title: label,
@@ -489,19 +882,21 @@
         }
 
         function tab(label, key, extraClass = "") {
-          const remaining = state.todos.filter((t) => matches(t, key) && !t.completed).length;
-          const btn = Object.assign(document.createElement("button"), {
+          const remaining = key === "trash"
+            ? state.trash.length
+            : state.todos.filter((t) => matches(t, key) && !t.completed).length;
+          const btn = el("button", {
             type: "button",
             className: `tab${state.selected === key ? " active" : ""}${extraClass ? " " + extraClass : ""}`,
             textContent: label,
             onclick: () => { state.selected = key; render(); },
           });
-          if (remaining) btn.append(Object.assign(document.createElement("span"), { className: "count", textContent: remaining }));
+          if (remaining) btn.append(el("span", { className: "count", textContent: remaining }));
           return btn;
         }
 
         function renderCategories() {
-          const addBtn = Object.assign(document.createElement("button"), {
+          const addBtn = el("button", {
             type: "button", className: "tab add", textContent: "+ 분류", title: "분류 추가", onclick: addCategory,
           });
           tabsEl.replaceChildren(
@@ -509,6 +904,7 @@
             ...state.categories.map((c) => tab(c.name, c.id)),
             ...(state.categories.length ? [tab("미분류", "none")] : []),
             ...(state.todos.some((t) => t.hidden) ? [tab("🙈 숨김", "hidden")] : []),
+            ...(state.trash.length ? [tab("🗑️ 휴지통", "trash")] : []),
             addBtn,
           );
 
@@ -517,18 +913,18 @@
           $("category-name").textContent = current ? `📁 ${current}` : "";
 
           // 추가 폼의 분류 선택 — 기본값은 지금 보고 있는 분류
-          categorySelectEl.replaceChildren(
-            new Option("미분류", ""),
-            ...state.categories.map((c) => new Option(c.name, c.id)),
-          );
+          const options = () => [new Option("미분류", ""), ...state.categories.map((c) => new Option(c.name, c.id))];
+          categorySelectEl.replaceChildren(...options());
           categorySelectEl.hidden = state.categories.length === 0;
           categorySelectEl.value = typeof state.selected === "number" ? state.selected : "";
+          $("edit-category").replaceChildren(...options());
         }
 
-        // 검색어가 제목이나 설명에 들어 있는지 (대소문자 무시)
+        // 검색어가 제목·설명·태그에 들어 있는지 (대소문자 무시) + 태그 필터
         function searched(todo) {
           const keyword = state.query.trim().toLowerCase();
-          return `${todo.title}\n${todo.description}`.toLowerCase().includes(keyword);
+          if (state.tag && !todo.tags.includes(state.tag)) return false;
+          return [todo.title, todo.description, ...todo.tags].join("\n").toLowerCase().includes(keyword);
         }
 
         // 숨김 탭: 분류 순서대로 묶고, 미분류는 맨 뒤에
@@ -537,7 +933,7 @@
             .map((id) => [id, todos.filter((t) => t.category_id === id)])
             .filter(([, items]) => items.length);
           return groups.flatMap(([id, items]) => [
-            Object.assign(document.createElement("li"), {
+            el("li", {
               className: "group",
               textContent: `📁 ${id === null ? "미분류" : categoryName(id)} · ${items.length}`,
             }),
@@ -547,11 +943,28 @@
 
         function render() {
           renderCategories();
+          const trashView = state.selected === "trash";
           const hiddenView = state.selected === "hidden";
+          const calendarView = state.view === "calendar" && !trashView;
+
+          $("todo-form").hidden = trashView;
+          $("toolbar").hidden = trashView;
+          $("tag-filter").hidden = !state.tag || trashView;
+          $("tag-filter-clear").textContent = `#${state.tag} ✕`;
+          $("app").classList.toggle("wide", calendarView);
+          $("view-list").setAttribute("aria-pressed", String(!calendarView));
+          $("view-calendar").setAttribute("aria-pressed", String(calendarView));
+          listEl.hidden = calendarView;
+          calendarEl.hidden = !calendarView;
+          $("clear-completed").hidden = trashView;
+          $("empty-trash").hidden = !trashView;
+
+          if (trashView) return renderTrash();
+
           const inTab = state.todos.filter((t) => matches(t, state.selected));
           const todos = inTab.filter(searched);
-          emptyEl.hidden = todos.length !== 0;
-          emptyEl.textContent = state.query.trim() ? "검색 결과가 없어요 🔍"
+          emptyEl.hidden = todos.length !== 0 || calendarView;
+          emptyEl.textContent = state.query.trim() || state.tag ? "검색 결과가 없어요 🔍"
             : state.selected === "all" ? "아직 할 일이 없어요. 위에서 추가해보세요 ✨"
             : "이 분류에는 할 일이 없어요 ✨";
           subtitleEl.textContent = inTab.length
@@ -563,76 +976,348 @@
           $("list-footer").hidden = doneCount === 0;
           $("clear-completed").textContent = `🧹 완료된 ${hiddenView ? "숨긴 " : ""}항목 ${doneCount}개 모두 지우기`;
 
-          listEl.replaceChildren(...(hiddenView ? groupByCategory(todos) : todos.map(todoItem)));
+          if (calendarView) {
+            listEl.replaceChildren();
+            renderCalendar(todos);
+          } else {
+            listEl.replaceChildren(...(hiddenView ? groupByCategory(todos) : todos.map(todoItem)));
+          }
         }
 
+        // ---- 할 일 한 줄 ----
+
         function todoItem(todo) {
-          const check = Object.assign(document.createElement("input"), {
+          const check = el("input", {
             type: "checkbox",
             checked: todo.completed,
-            onchange: () => save(todo.id, { completed: check.checked }),
+            onchange: () => run("수정", async () => {
+              await api(`/todos/${todo.id}`, "PATCH", { completed: check.checked });
+              await load();
+              if (check.checked && todo.repeat !== "none") toast(`🔁 다음 '${todo.title}' 일정을 만들었어요`);
+            }),
           });
 
-          const title = Object.assign(document.createElement("span"), { className: "title", textContent: todo.title });
-          const text = document.createElement("span");
-          text.className = "todo-text";
-          text.append(title);
-          if (todo.description) {
-            text.append(Object.assign(document.createElement("span"), { className: "desc", textContent: todo.description }));
-          }
+          const text = el("div", { className: "todo-text" });
+          text.append(el("span", { className: "title", textContent: todo.title }));
+          if (todo.description) text.append(el("span", { className: "desc", textContent: todo.description }));
           if (todo.priority !== "medium") {             // 보통은 배지 없이
-            text.append(Object.assign(document.createElement("span"), {
+            text.append(el("span", {
               className: `priority ${todo.priority}`,
               textContent: `${todo.priority === "high" ? "🔴 " : ""}${PRIORITY_LABELS[todo.priority]}`,
             }));
           }
           if (state.selected === "all" && todo.category_id !== null) {
-            text.append(Object.assign(document.createElement("span"), { className: "category", textContent: `📁 ${categoryName(todo.category_id)}` }));
+            text.append(el("span", { className: "category", textContent: `📁 ${categoryName(todo.category_id)}` }));
           }
+          if (todo.repeat !== "none") {
+            text.append(el("span", { className: "badge repeat", textContent: `🔁 ${REPEAT_LABELS[todo.repeat]}` }));
+          }
+          if (todo.subtasks.length) text.append(progressButton(todo));
           if (todo.due_date) {
             const status = todo.completed ? "" : dueStatus(todo.due_date);
-            text.append(Object.assign(document.createElement("span"), {
+            text.append(el("span", {
               className: `due${status ? ` ${status}` : ""}`,
               textContent: formatDue(todo.due_date),
             }));
           }
+          for (const tag of todo.tags) {
+            text.append(el("button", {
+              type: "button",
+              className: `badge tag${state.tag === tag ? " active" : ""}`,
+              textContent: `#${tag}`,
+              title: `#${tag} 만 보기`,
+              onclick: () => { state.tag = state.tag === tag ? null : tag; render(); },
+            }));
+          }
+          if (state.expanded.has(todo.id)) text.append(subtaskPanel(todo));
 
-          const li = document.createElement("li");
+          const li = el("li");
           li.className = todo.completed ? "done" : "";
+          if (canDrag()) li.append(dragHandle(li, todo));
           li.append(
             check,
             text,
-            iconButton("✏️", "수정", "", () => edit(todo)),
+            iconButton("✏️", "수정", "", () => openEdit(todo)),
             todo.hidden
               ? iconButton("👁️", "다시 보이기", "", () => save(todo.id, { hidden: false }))
               : iconButton("🙈", "숨기기", "", () => save(todo.id, { hidden: true })),
-            iconButton("🗑️", "삭제", "danger", () => remove(todo.id)),
+            iconButton("🗑️", "삭제", "danger", () => remove(todo)),
           );
           return li;
         }
 
-        function edit(todo) {
-          const title = prompt("새 제목:", todo.title);
-          if (title === null) return;
-          const description = prompt("새 설명:", todo.description);
-          if (description === null) return;
-          const dueDate = prompt("새 마감일 (YYYY-MM-DD HH:mm, 없으면 비워두기):", todo.due_date ? todo.due_date.slice(0, 16).replace("T", " ") : "");
-          if (dueDate === null) return;
-          let categoryId = todo.category_id;
-          if (state.categories.length) {
-            const names = state.categories.map((c) => c.name).join(", ");
-            const name = prompt(`분류 (${names} 중 하나, 비우면 미분류):`, categoryName(todo.category_id) ?? "");
-            if (name === null) return;
-            const found = state.categories.find((c) => c.name === name.trim());
-            if (name.trim() && !found) { alert(`"${name.trim()}" 분류가 없어요.`); return; }
-            categoryId = found ? found.id : null;
-          }
-          const priorityName = prompt("우선순위 (높음, 보통, 낮음):", PRIORITY_LABELS[todo.priority]);
-          if (priorityName === null) return;
-          const priority = Object.keys(PRIORITY_LABELS).find((k) => PRIORITY_LABELS[k] === priorityName.trim());
-          if (!priority) { alert(`"${priorityName.trim()}" 우선순위가 없어요.`); return; }
-          save(todo.id, { title: title.trim(), description: description.trim(), due_date: dueDate.trim().replace(" ", "T") || null, category_id: categoryId, priority });
+        // ---- 하위 작업 ----
+
+        function progressButton(todo) {
+          const done = todo.subtasks.filter((s) => s.done).length;
+          const btn = el("button", {
+            type: "button",
+            className: "badge progress",
+            title: state.expanded.has(todo.id) ? "하위 작업 접기" : "하위 작업 펼치기",
+            onclick: () => {
+              state.expanded.has(todo.id) ? state.expanded.delete(todo.id) : state.expanded.add(todo.id);
+              render();
+            },
+          });
+          const bar = el("span", { className: "bar" });
+          bar.append(el("span", { style: `width: ${(done / todo.subtasks.length) * 100}%` }));
+          btn.append(`☑ ${done}/${todo.subtasks.length}`, bar);
+          return btn;
         }
+
+        function subtaskPanel(todo) {
+          const panel = el("div", { className: "subtasks" });
+          const update = (subtasks) => save(todo.id, { subtasks });
+          todo.subtasks.forEach((s, i) => {
+            const row = el("label", { className: `subtask${s.done ? " checked" : ""}` });
+            row.append(
+              el("input", {
+                type: "checkbox", checked: s.done,
+                onchange: (e) => update(todo.subtasks.map((x, j) => (j === i ? { ...x, done: e.target.checked } : x))),
+              }),
+              el("span", { textContent: s.title }),
+              iconButton("✕", "하위 작업 삭제", "danger", (e) => {
+                e.preventDefault();
+                update(todo.subtasks.filter((_, j) => j !== i));
+              }),
+            );
+            panel.append(row);
+          });
+          const input = el("input", { type: "text", placeholder: "+ 하위 작업 추가 (Enter)", maxLength: 100 });
+          input.onkeydown = (e) => {
+            if (e.key !== "Enter" || e.isComposing || !input.value.trim()) return;
+            e.preventDefault();
+            update([...todo.subtasks, { title: input.value.trim(), done: false }]);
+          };
+          panel.append(input);
+          return panel;
+        }
+
+        // ---- 끌어서 순서 바꾸기 ----
+
+        let dragging = null;                             // { kind: "row" | "chip", id }
+        const canDrag = () => state.sort === "" && state.view === "list" && state.selected !== "hidden";
+
+        function dragHandle(li, todo) {
+          const handle = el("span", { className: "drag-handle", textContent: "⠿", title: "끌어서 순서 바꾸기" });
+          handle.onmousedown = () => { li.draggable = true; };     // 손잡이를 잡았을 때만 끌 수 있게
+          handle.onmouseup = () => { li.draggable = false; };
+          li.ondragstart = (e) => {
+            dragging = { kind: "row", id: todo.id };
+            e.dataTransfer.effectAllowed = "move";
+            li.classList.add("dragging");
+          };
+          li.ondragend = () => {
+            li.draggable = false;
+            dragging = null;
+            listEl.querySelectorAll(".dragging, .drop-above, .drop-below")
+              .forEach((x) => x.classList.remove("dragging", "drop-above", "drop-below"));
+          };
+          li.ondragover = (e) => {
+            if (dragging?.kind !== "row" || dragging.id === todo.id) return;
+            e.preventDefault();
+            const rect = li.getBoundingClientRect();
+            const below = e.clientY > rect.top + rect.height / 2;
+            li.classList.toggle("drop-below", below);
+            li.classList.toggle("drop-above", !below);
+          };
+          li.ondragleave = () => li.classList.remove("drop-above", "drop-below");
+          li.ondrop = (e) => {
+            e.preventDefault();
+            const below = li.classList.contains("drop-below");
+            li.classList.remove("drop-above", "drop-below");
+            if (dragging?.kind === "row") reorder(dragging.id, todo.id, below);
+          };
+          return handle;
+        }
+
+        function reorder(fromId, toId, after) {
+          const ids = state.todos.filter((t) => matches(t, state.selected) && searched(t)).map((t) => t.id);
+          ids.splice(ids.indexOf(fromId), 1);
+          ids.splice(ids.indexOf(toId) + (after ? 1 : 0), 0, fromId);
+          // 화면은 바로 바꾸고(서버와 같은 규칙: 보이는 항목들의 자리 안에서만 섞기) 저장은 뒤에서
+          const byId = Object.fromEntries(state.todos.map((t) => [t.id, t]));
+          const wanted = new Set(ids), queue = ids.map((id) => byId[id]);
+          state.todos = state.todos.map((t) => (wanted.has(t.id) ? queue.shift() : t));
+          render();
+          run("순서 저장", async () => { await api("/todos/order", "PUT", { ids }); await load(); });
+        }
+
+        // ---- 달력 ----
+
+        function renderCalendar(todos) {
+          const year = state.month.getFullYear(), month = state.month.getMonth();
+          const head = el("div", { className: "cal-head" });
+          const shift = (n) => { state.month = new Date(year, month + n, 1); render(); };
+          head.append(
+            iconButton("‹", "이전 달", "", () => shift(-1)),
+            el("h2", { textContent: `${year}년 ${month + 1}월` }),
+            iconButton("›", "다음 달", "", () => shift(1)),
+            el("button", {
+              type: "button", className: "text-btn", textContent: "오늘",
+              onclick: () => { state.month = new Date(today.getFullYear(), today.getMonth(), 1); render(); },
+            }),
+          );
+
+          const grid = el("div", { className: "cal-grid" });
+          ["일", "월", "화", "수", "목", "금", "토"].forEach((name, i) => {
+            grid.append(el("div", { className: `cal-weekday${i === 0 ? " sun" : i === 6 ? " sat" : ""}`, textContent: name }));
+          });
+
+          const byDay = {};
+          for (const t of todos) {
+            if (!t.due_date) continue;
+            (byDay[ymd(new Date(t.due_date))] ??= []).push(t);
+          }
+          Object.values(byDay).forEach((items) => items.sort((a, b) => new Date(a.due_date) - new Date(b.due_date)));
+
+          const first = new Date(year, month, 1);
+          const cells = Math.ceil((first.getDay() + new Date(year, month + 1, 0).getDate()) / 7) * 7;
+          for (let i = 0; i < cells; i++) {
+            const date = new Date(year, month, 1 - first.getDay() + i);
+            grid.append(dayCell(date, date.getMonth() !== month, byDay[ymd(date)] ?? []));
+          }
+
+          const undated = todos.filter((t) => !t.due_date).length;
+          const note = el("p", {
+            className: "cal-note",
+            textContent: `날짜를 누르면 그날 마감으로 추가하고, 할 일을 끌어 다른 날로 옮길 수 있어요.${undated ? ` · 마감일 없는 할 일 ${undated}개는 목록에서 보여요` : ""}`,
+          });
+          calendarEl.replaceChildren(head, grid, note);
+        }
+
+        function dayCell(date, otherMonth, items) {
+          const key = ymd(date);
+          const cell = el("div", {
+            className: ["cal-day", otherMonth && "other", key === ymd(new Date()) && "today",
+              date.getDay() === 0 && "sun", date.getDay() === 6 && "sat"].filter(Boolean).join(" "),
+          });
+          cell.append(el("span", { className: "num", textContent: date.getDate() }));
+          items.forEach((t, i) => {
+            const status = t.completed ? "done" : dueStatus(t.due_date) === "overdue" ? "overdue" : "";
+            const chip = el("button", {
+              type: "button",
+              className: ["chip", t.priority, status, i >= 3 && "extra"].filter(Boolean).join(" "),
+              textContent: t.title,
+              title: `${formatDate(new Date(t.due_date))} ${t.title}${t.repeat !== "none" ? ` (🔁 ${REPEAT_LABELS[t.repeat]})` : ""}`,
+              draggable: true,
+              onclick: (e) => { e.stopPropagation(); openEdit(t); },
+            });
+            chip.ondragstart = (e) => { dragging = { kind: "chip", id: t.id }; e.dataTransfer.effectAllowed = "move"; };
+            chip.ondragend = () => { dragging = null; };
+            cell.append(chip);
+          });
+          if (items.length > 3) {
+            const more = el("button", { type: "button", className: "more", textContent: `+${items.length - 3}개` });
+            more.onclick = (e) => {
+              e.stopPropagation();
+              more.textContent = cell.classList.toggle("open") ? "접기" : `+${items.length - 3}개`;
+            };
+            cell.append(more);
+          }
+
+          // 다른 날로 끌어 놓으면 시각은 그대로 두고 날짜만 바꾼다
+          cell.ondragover = (e) => { if (dragging?.kind === "chip") { e.preventDefault(); cell.classList.add("drop"); } };
+          cell.ondragleave = () => cell.classList.remove("drop");
+          cell.ondrop = (e) => {
+            e.preventDefault();
+            cell.classList.remove("drop");
+            const todo = state.todos.find((t) => t.id === dragging?.id);
+            if (!todo || ymd(new Date(todo.due_date)) === key) return;
+            const time = toInputValue(todo.due_date).slice(11);
+            save(todo.id, { due_date: `${key}T${time}` });
+          };
+          // 빈 곳을 누르면 그날 마감으로 새 할 일 쓰기
+          cell.onclick = () => {
+            $("due-date").value = `${key}T09:00`;
+            $("title").focus();
+            toast(`📅 ${date.getMonth() + 1}/${date.getDate()} 마감으로 추가해요 — 제목을 입력하세요`);
+          };
+          return cell;
+        }
+
+        // ---- 휴지통 ----
+
+        function renderTrash() {
+          subtitleEl.textContent = `휴지통 ${state.trash.length}개 · 되돌리거나 영구 삭제할 수 있어요`;
+          emptyEl.hidden = state.trash.length !== 0;
+          emptyEl.textContent = "휴지통이 비어 있어요 🗑️";
+          $("list-footer").hidden = state.trash.length === 0;
+          listEl.replaceChildren(...state.trash.map((todo) => {
+            const text = el("div", { className: "todo-text" });
+            text.append(el("span", { className: "title", textContent: todo.title }));
+            if (todo.description) text.append(el("span", { className: "desc", textContent: todo.description }));
+            text.append(el("span", { className: "badge meta", textContent: `🗑️ ${formatDate(new Date(todo.deleted_at))} 삭제` }));
+            const li = el("li");
+            li.append(
+              text,
+              iconButton("♻️", "복원", "", () => restore([todo.id])),
+              iconButton("❌", "영구 삭제", "danger", () => {
+                if (!confirm(`"${todo.title}" 을(를) 영구 삭제할까요? 되돌릴 수 없어요.`)) return;
+                run("영구 삭제", async () => { await api(`/trash/${todo.id}`, "DELETE"); await load(); });
+              }),
+            );
+            return li;
+          }));
+        }
+
+        const restore = (ids) => run("되돌리기", async () => {
+          const restored = await api("/trash/restore", "POST", { ids });
+          await load();
+          toast(`♻️ ${restored.length}개를 되돌렸어요`);
+        });
+
+        $("empty-trash").onclick = () => {
+          if (!confirm(`휴지통의 ${state.trash.length}개를 영구 삭제할까요? 되돌릴 수 없어요.`)) return;
+          run("휴지통 비우기", async () => { await api("/trash", "DELETE"); await load(); });
+        };
+
+        // ---- 수정 창 ----
+
+        let editing = null;
+
+        function openEdit(todo) {
+          editing = todo;
+          $("edit-title").value = todo.title;
+          $("edit-description").value = todo.description;
+          $("edit-due").value = toInputValue(todo.due_date);
+          $("edit-repeat").value = todo.repeat;
+          $("edit-category").value = todo.category_id ?? "";
+          $("edit-priority").value = todo.priority;
+          $("edit-tags").value = todo.tags.join(", ");
+          $("edit-subtasks").value = todo.subtasks.map((s) => s.title).join("\n");
+          $("edit-error").hidden = true;
+          $("edit-dialog").showModal();
+        }
+
+        $("edit-cancel").onclick = () => $("edit-dialog").close();
+
+        $("edit-form").onsubmit = (event) => {
+          event.preventDefault();
+          const due = $("edit-due").value, repeat = $("edit-repeat").value;
+          if (repeat !== "none" && !due) {
+            $("edit-error").textContent = "반복하려면 마감일이 필요해요.";
+            $("edit-error").hidden = false;
+            return;
+          }
+          const doneTitles = new Set(editing.subtasks.filter((s) => s.done).map((s) => s.title));
+          const subtasks = $("edit-subtasks").value.split("\n").map((s) => s.trim()).filter(Boolean)
+            .map((title) => ({ title, done: doneTitles.has(title) }));   // 이름이 같으면 체크 상태 유지
+          const id = editing.id;
+          $("edit-dialog").close();
+          save(id, {
+            title: $("edit-title").value.trim(),
+            description: $("edit-description").value.trim(),
+            due_date: due || null,
+            repeat,
+            category_id: $("edit-category").value ? Number($("edit-category").value) : null,
+            priority: $("edit-priority").value,
+            tags: parseTags($("edit-tags").value),
+            subtasks,
+          });
+        };
+
+        // ---- 분류 ----
 
         function addCategory() {
           const name = prompt("새 분류 이름:");
@@ -657,29 +1342,72 @@
           run("분류 삭제", async () => { await api(`/categories/${id}`, "DELETE"); await load(); });
         };
 
-        function remove(id) {
-          if (!confirm("정말 삭제할까요?")) return;
-          run("삭제", async () => { await api(`/todos/${id}`, "DELETE"); await load(); });
-        }
+        // ---- 삭제 (휴지통으로 + 실행 취소) ----
 
-        $("search").oninput = (event) => { state.query = event.target.value; render(); };
-        $("sort").onchange = (event) => { state.sort = event.target.value; load(); };  // 정렬은 서버가 한다
+        function remove(todo) {
+          run("삭제", async () => {
+            await api(`/todos/${todo.id}`, "DELETE");
+            await load();
+            toast(`🗑️ '${todo.title}' 삭제됨`, "실행 취소", () => restore([todo.id]));
+          });
+        }
 
         $("clear-completed").onclick = () => {
           const hidden = state.selected === "hidden";
           if (!confirm(`완료된 ${hidden ? "숨긴 " : ""}항목을 모든 분류에서 지울까요?`)) return;
-          run("완료 항목 삭제", async () => { await api(`/todos/completed?hidden=${hidden}`, "DELETE"); await load(); });
+          const ids = state.todos.filter((t) => t.completed && t.hidden === hidden).map((t) => t.id);
+          run("완료 항목 삭제", async () => {
+            await api(`/todos/completed?hidden=${hidden}`, "DELETE");
+            await load();
+            toast(`🧹 ${ids.length}개를 휴지통으로 옮겼어요`, "실행 취소", () => restore(ids));
+          });
         };
+
+        // ---- 검색 · 정렬 · 보기 ----
+
+        $("search").oninput = (event) => { state.query = event.target.value; render(); };
+        $("sort").onchange = (event) => { state.sort = event.target.value; load(); };  // 정렬은 서버가 한다
+        $("tag-filter-clear").onclick = () => { state.tag = null; render(); };
+        $("view-list").onclick = () => { state.view = "list"; render(); };
+        $("view-calendar").onclick = () => { state.view = "calendar"; render(); };
+
+        // ---- 가져오기 ----
+
+        $("import-btn").onclick = () => $("import-file").click();
+        $("import-file").onchange = async (event) => {
+          const file = event.target.files[0];
+          event.target.value = "";                       // 같은 파일을 다시 골라도 동작하게
+          if (!file) return;
+          await run("가져오기", async () => {
+            let data;
+            try { data = JSON.parse(await file.text()); } catch { throw new Error("JSON 파일이 아니에요"); }
+            const count = data.todos?.length ?? 0;
+            if (!confirm(`할 일 ${count}개를 지금 목록 뒤에 추가할까요?`)) return;
+            const result = await api("/import", "POST", data);
+            await load();
+            toast(`⬆️ 할 일 ${result.todos}개${result.categories ? `, 분류 ${result.categories}개` : ""}를 가져왔어요`);
+          });
+        };
+
+        // ---- 추가 ----
 
         $("todo-form").onsubmit = (event) => {
           event.preventDefault();
+          const due = $("due-date").value, repeat = $("repeat").value;
+          if (repeat !== "none" && !due) {
+            errorEl.textContent = "반복하려면 마감일이 필요해요.";
+            errorEl.hidden = false;
+            return;
+          }
           run("추가", async () => {
             await api("/todos", "POST", {
               title: $("title").value.trim(),
               description: $("description").value.trim(),
-              due_date: $("due-date").value || null,
+              due_date: due || null,
               category_id: categorySelectEl.value ? Number(categorySelectEl.value) : null,
               priority: $("priority").value,
+              repeat,
+              tags: parseTags($("tags").value),
             });
             event.target.reset();
             await load();

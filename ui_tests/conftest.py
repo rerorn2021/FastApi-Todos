@@ -53,7 +53,7 @@ def base_url(data_dir):
 @pytest.fixture(autouse=True)
 def clean_data(data_dir):
     # 서버는 요청마다 파일을 읽으므로, 파일만 비우면 테스트 간 데이터가 격리된다
-    for name in ("todo.json", "categories.json"):
+    for name in ("todo.json", "categories.json", "trash.json"):
         (data_dir / name).write_text("[]", encoding="utf-8")
 
 
