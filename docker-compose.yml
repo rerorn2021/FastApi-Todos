@@ -20,7 +20,7 @@ services:
     networks:
       - loadtest-net
 
-jmeter:
+  jmeter:
     build:
       context: ./jmeter
       dockerfile: Dockerfile

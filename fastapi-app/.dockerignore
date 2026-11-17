@@ -10,4 +10,6 @@ Dockerfile
 tests/
 todo.json
 categories.json
+trash.json
+*.json.tmp
 data/

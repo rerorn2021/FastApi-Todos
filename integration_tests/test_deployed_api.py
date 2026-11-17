@@ -45,6 +45,7 @@ def todo(client):
     item = response.json()
     yield item
     client.delete(f"/todos/{item['id']}")  # 테스트 안에서 이미 지웠다면 404가 오지만 상관없음
+    client.delete(f"/trash/{item['id']}")  # 삭제는 휴지통으로 가므로 휴지통에서도 지운다
 
 
 @pytest.fixture
